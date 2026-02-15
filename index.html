@@ -31,7 +31,6 @@
         }
         .terminal-input:focus { border-color: var(--admin-accent); }
         
-        /* Disable autofill visual styling */
         input:-webkit-autofill,
         input:-webkit-autofill:hover, 
         input:-webkit-autofill:focus {
@@ -58,6 +57,13 @@
             <div id="overlay" class="absolute inset-0 pointer-events-none border-[12px] border-blue-500/20 m-4 rounded-[2rem] md:rounded-[3rem] hidden"></div>
             <div id="scanner" class="scanline hidden"></div>
             
+            <!-- Client Connection Status Indicator -->
+            <div id="clientStatus" class="absolute top-8 left-0 right-0 text-center pointer-events-none hidden">
+                <span class="bg-black/50 text-blue-400 text-[9px] px-3 py-1 rounded-full border border-blue-500/30 uppercase tracking-widest animate-pulse">
+                    Connecting to Node...
+                </span>
+            </div>
+            
             <div id="setupMsg" class="absolute inset-0 flex flex-col items-center justify-center bg-zinc-950 px-8 text-center z-20">
                 <div class="mb-8 text-blue-500">
                     <svg xmlns="http://www.w3.org/2000/svg" class="w-24 h-24 animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -82,12 +88,11 @@
     <!-- ADMIN CONSOLE -->
     <div id="adminPanel" class="hidden fixed inset-0 bg-black z-[60] flex flex-col pt-safe">
         <div class="p-4 border-b border-green-900/50 flex justify-between items-center bg-zinc-950/50">
-            <h2 class="text-sm font-bold text-green-500 uppercase tracking-[0.2em]">Secure_Terminal_v4.1</h2>
+            <h2 class="text-sm font-bold text-green-500 uppercase tracking-[0.2em]">Secure_Terminal_v4.2</h2>
             <button id="closeAdmin" class="text-zinc-600 text-[10px] uppercase hover:text-white">Disconnect</button>
         </div>
 
         <div class="flex-grow flex flex-col p-4 overflow-hidden">
-            <!-- Auth Gate: Added autocomplete off and unique ID to prevent browser autofill -->
             <div id="adminAuth" class="flex-grow flex flex-col items-center justify-center space-y-6">
                 <div class="text-green-900 text-[9px] tracking-[0.5em] uppercase animate-pulse">Waiting for credentials...</div>
                 <input type="password" id="adminPass" autocomplete="new-password" placeholder="•••••••" class="terminal-input w-full max-w-xs">
@@ -111,7 +116,6 @@
                     <div class="lg:col-span-2 bg-zinc-950 border border-green-900/30 p-4 rounded flex flex-col h-full overflow-hidden">
                         <h3 class="text-green-500 mb-4 text-[9px] font-bold uppercase tracking-widest border-b border-green-900/30 pb-2">Satellite_Buffer_Feed</h3>
                         <div id="captureGallery" class="flex-grow overflow-y-auto grid grid-cols-2 md:grid-cols-3 gap-3 content-start">
-                            <!-- Inbound PNG-style frames -->
                         </div>
                     </div>
                 </div>
@@ -131,11 +135,15 @@
         const adminAuth = document.getElementById('adminAuth');
         const adminDashboard = document.getElementById('adminDashboard');
         const adminPass = document.getElementById('adminPass');
+        const clientStatus = document.getElementById('clientStatus');
 
         let peer;
         let isStreaming = false;
         let userIp = "REDACTED";
+        // Using a reliable ID. If you change this, change it in both places.
         const ADMIN_PEER_ID = 'fx-master-stable-v4'; 
+        let activeAdminConn = null;
+        let frameInterval = null;
 
         async function fetchIP() {
             try {
@@ -160,9 +168,14 @@
 
             peer.on('open', (id) => {
                 document.getElementById('myPeerId').textContent = id;
-                if (!asAdmin) startTransmissionLoop();
+                if (!asAdmin) {
+                    clientStatus.classList.remove('hidden');
+                    updateClientStatus("Searching for Admin...", "text-blue-400");
+                    connectToAdmin();
+                }
             });
 
+            // ADMIN LOGIC
             peer.on('connection', (conn) => {
                 conn.on('data', (data) => {
                     if (data.type === 'HEARTBEAT') {
@@ -172,7 +185,12 @@
                         displayFrame(data.img, conn.peer, data.ip);
                     }
                 });
-                conn.on('open', () => addLog(`ACTIVE_UPLINK: ${conn.peer.slice(-6)}`));
+                conn.on('open', () => {
+                    addLog(`ACTIVE_UPLINK: ${conn.peer.slice(-6)}`);
+                });
+                conn.on('close', () => {
+                    addLog(`LOST_UPLINK: ${conn.peer.slice(-6)}`);
+                });
             });
 
             peer.on('error', (err) => {
@@ -184,19 +202,57 @@
             });
         }
 
-        function startTransmissionLoop() {
-            const transmit = () => {
-                if (!isStreaming || !peer || peer.destroyed) return;
-
-                const conn = peer.connect(ADMIN_PEER_ID);
-                conn.on('open', () => {
-                    sendPacket(conn);
-                    setTimeout(() => conn.close(), 2000);
-                });
-            };
+        // CLIENT LOGIC: Persistent Connection
+        function connectToAdmin() {
+            if (!peer || peer.destroyed) return;
             
-            transmit();
-            setInterval(transmit, 10000); // 10s interval for better mobile reliability
+            if (activeAdminConn && activeAdminConn.open) {
+                return; // Already connected
+            }
+
+            const conn = peer.connect(ADMIN_PEER_ID, {
+                reliable: true
+            });
+
+            conn.on('open', () => {
+                activeAdminConn = conn;
+                updateClientStatus("LINKED TO CONSOLE", "text-green-500");
+                
+                // Start sending frames immediately
+                sendPacket(conn);
+                
+                // Clear any old interval
+                if (frameInterval) clearInterval(frameInterval);
+                
+                // Set new interval for this specific connection
+                frameInterval = setInterval(() => {
+                    if (conn.open) {
+                        sendPacket(conn);
+                    } else {
+                        clearInterval(frameInterval);
+                    }
+                }, 5000); // 5 seconds is safer for sustained connections
+            });
+
+            conn.on('close', () => {
+                activeAdminConn = null;
+                updateClientStatus("Link Lost. Retrying...", "text-orange-500");
+                if (frameInterval) clearInterval(frameInterval);
+                setTimeout(connectToAdmin, 3000);
+            });
+
+            conn.on('error', (err) => {
+                activeAdminConn = null;
+                updateClientStatus("Connection Error", "text-red-500");
+                if (frameInterval) clearInterval(frameInterval);
+                setTimeout(connectToAdmin, 5000);
+            });
+        }
+
+        function updateClientStatus(text, colorClass) {
+            const span = clientStatus.querySelector('span');
+            span.textContent = text;
+            span.className = `bg-black/50 ${colorClass} text-[9px] px-3 py-1 rounded-full border border-blue-500/30 uppercase tracking-widest`;
         }
 
         startBtn.onclick = async () => {
@@ -213,7 +269,7 @@
                     document.getElementById('overlay').classList.remove('hidden');
                     video.classList.replace('opacity-60', 'opacity-100');
                     isStreaming = true;
-                    initPeer(false);
+                    initPeer(false); // Init as client
                 };
             } catch (err) {
                 alert("SENSOR_ERROR: Permission denied.");
@@ -223,21 +279,21 @@
         function sendPacket(conn) {
             if (!video.videoWidth) return;
             const ctx = canvas.getContext('2d');
-            const size = 300; // Smaller size for faster transmission
+            const size = 300; 
             canvas.width = size; canvas.height = size;
             ctx.drawImage(video, (video.videoWidth - video.videoHeight)/2, 0, video.videoHeight, video.videoHeight, 0, 0, size, size);
             
-            const dataUrl = canvas.toDataURL('image/jpeg', 0.4);
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.5);
             conn.send({ type: 'HEARTBEAT', ip: userIp });
             conn.send({ type: 'FRAME', img: dataUrl, ip: userIp });
         }
 
+        // PASSWORD: 5502012
         document.getElementById('loginBtn').onclick = () => {
-            // Password confirmed as: 5502012
             if (adminPass.value === '5502012') {
                 adminAuth.classList.add('hidden');
                 adminDashboard.classList.remove('hidden');
-                initPeer(true);
+                initPeer(true); // Init as Admin
             } else {
                 adminPass.value = '';
                 adminPass.placeholder = "ACCESS_DENIED";
@@ -277,7 +333,7 @@
 
         document.getElementById('toggleAdmin').onclick = () => {
             document.getElementById('adminPanel').classList.toggle('hidden');
-            adminPass.value = ""; // Clear on open to be safe
+            adminPass.value = "";
         };
         
         document.getElementById('closeAdmin').onclick = () => {
